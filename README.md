@@ -1,96 +1,26 @@
-# Vintage PRO 1.2.0 — magazyn, zwroty i korekty
+# Vintage PRO 2.0.0 — wydanie finalne
 
-Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
+Bezpłatna aplikacja Google Sheets + Apps Script dla TWINS PICK i VILANA VINTAGE. Obsługuje komputer i telefon, magazyn produktów jednostkowych, sprzedaż, targi, raporty dobowe, wydatki, rozliczenia 50/50, analitykę, korekty, zdjęcia i migrację danych historycznych.
 
-## Instalacja
+## Instalacja / aktualizacja
 
-1. W arkuszu otwórz **Rozszerzenia → Apps Script**.
-2. Zastąp zawartość pliku `Code.gs` kodem z tego pakietu.
-3. Dodaj plik HTML o nazwie dokładnie `Mobile` i wklej zawartość `Mobile.html`.
-4. W ustawieniach projektu włącz wyświetlanie pliku manifestu i zastąp `appsscript.json` wersją z pakietu.
-5. W zakładce `13_UŻYTKOWNICY` wpisz adresy Google uprawnionych właścicieli i menedżerów. Zaznacz `Aktywny` i `Telefon – dostęp`.
-6. Utwórz wspólny folder Google Drive na zdjęcia, udostępnij go wszystkim użytkownikom aplikacji i wklej jego ID do `12_USTAWIENIA` przy `FOLDER_ZDJĘCIA_ID`.
-7. Odśwież arkusz i zaakceptuj wymagane uprawnienia.
-8. Wybierz **Wdróż → Nowe wdrożenie → Aplikacja internetowa**. Uruchamianie: użytkownik korzystający z aplikacji. Dostęp: użytkownicy z kontem Google.
-9. Otwórz otrzymany link na telefonie i dodaj go do ekranu początkowego.
+1. Otwórz docelowy arkusz i wybierz **Rozszerzenia → Apps Script**.
+2. Zastąp `Code.gs`, `Mobile.html` i `appsscript.json` plikami z paczki (plik HTML musi nazywać się `Mobile`).
+3. Zapisz projekt, odśwież arkusz i wybierz **VINTAGE PRO → Przygotuj wersję finalną 2.0.0**.
+4. W `13_UŻYTKOWNICY` dodaj konta Google; pola `Aktywny` i `Telefon – dostęp` muszą być zaznaczone.
+5. W `12_USTAWIENIA` wpisz prawdziwe ID folderów `FOLDER_ZDJĘCIA_ID` i `FOLDER_DOKUMENTY_ID`; opcjonalnie `FOLDER_BACKUP_ID`.
+6. Wybierz **Wdróż → Zarządzaj wdrożeniami**, edytuj wdrożenie aplikacji internetowej, wybierz **Nowa wersja** i kliknij **Wdróż**. Zachowaj adres zakończony `/exec`.
+7. Otwórz panel, przejdź do **Administracja**, uruchom diagnostykę i usuń wszystkie błędy.
+8. Utwórz backup. Najpierw wykonaj podgląd, a potem — po sprawdzeniu liczb — import starej sprzedaży i wydatków.
+9. Wykonaj scenariusze z `TESTY_ODBIORCZE.md`. Dopiero potem rozpocznij pracę produkcyjną.
 
-## Aktualizacja z wersji 1.1.1
+## Najważniejsze reguły
 
-1. W projekcie Apps Script zastąp zawartość `Code.gs` i `Mobile.html` plikami z paczki.
-2. Kliknij **Wdróż → Zarządzaj wdrożeniami**.
-3. Otwórz aktywne wdrożenie, kliknij ikonę ołówka i wybierz **Nowa wersja**.
-4. Kliknij **Wdróż**. Adres aplikacji zakończony `/exec` pozostaje ten sam.
-5. Odśwież arkusz, wybierz z menu **VINTAGE PRO → Przygotuj aktualizację 1.2.0** i zaakceptuj wykonanie.
+- Każdy produkt ma unikatowe ID, ale można go wyszukiwać po nazwie i metadanych.
+- Koszty wspólne są dzielone 50/50; przychody i koszty indywidualne pozostają osobne.
+- Sprzedaż targowa jest raportowana osobno, a ruch produktu jest rejestrowany.
+- Import jest powtarzalny i pomija już przeniesione rekordy. Wymaga backupu z ostatnich 24 godzin.
+- Zamknięty miesiąc chroni dane; późniejszy zwrot jest zapisywany jako korekta w bieżącym okresie.
+- Wyliczenia VAT i podatku są estymacją. Stawki i podstawę musi zatwierdzić księgowość.
 
-## Zakres tego etapu
-
-- autoryzacja kont z zakładki `13_UŻYTKOWNICY`;
-- automatyczne ID `TP-000001` / `VV-000001`;
-- mobilne i komputerowe dodawanie produktów;
-- wyszukiwanie po nazwie, marce, kategorii, stylu, materiałach, rozmiarze, kolorze, stanie, wadzie i komentarzu;
-- sprzedaż z ceną końcową, rabatem, formą płatności i kanałem;
-- blokada równoczesnej sprzedaży tego samego produktu;
-- aktualizacja stanu magazynu;
-- zapis autora, czasu operacji i logu.
-- uruchamianie aparatu telefonu podczas dodawania i sprzedaży;
-- kompresja zdjęcia przed wysłaniem oraz zapis w Google Drive;
-- szybka sprzedaż produktu, którego nie ma jeszcze w bazie;
-- utworzenie karty produktu i sprzedaży w jednym przepływie;
-- rozszerzony rejestr wydatków i wzajemnych rozliczeń.
-- wspólne i sklepowe raporty dzienne z automatycznym podsumowaniem sprzedaży;
-- porównanie aplikacji z raportem papierowym, terminalem i faktyczną gotówką;
-- wykrywanie różnic i opcjonalne nieodwracalne zamknięcie raportu;
-- tworzenie wydarzeń targowych;
-- wydawanie produktów na targi i zwrot niesprzedanych produktów;
-- osobne liczniki i przychody targowe TWINS PICK oraz VILANA VINTAGE;
-- blokada zamknięcia targów, dopóki niesprzedane produkty nie wrócą do sklepów;
-- pełny rejestr ruchów towaru i log operacji.
-- mobilne dodawanie wydatków i dokumentów kosztowych;
-- załączniki w formie zdjęcia lub PDF zapisywane na Google Drive;
-- automatyczny podział kosztów wspólnych 50/50;
-- przypisywanie 100% kosztu indywidualnego do wybranego sklepu;
-- obliczanie kwoty należnej na podstawie osoby, która faktycznie zapłaciła;
-- miesięczne saldo wzajemne Lana ↔ Twinsy;
-- częściowe i pełne rozliczenia z blokadą błędnego kierunku lub nadpłaty;
-- automatyczne wyniki miesięczne osobno dla TWINS PICK i VILANA VINTAGE;
-- przychód, rabaty, koszt sprzedanych produktów, wydatki indywidualne i udział kosztów wspólnych;
-- rozdzielenie sprzedaży stacjonarnej i targowej oraz form płatności;
-- wskaźnik kompletności kosztów produktów.
-- mobilny panel właścicielski z filtrem dat, sklepu i kanału;
-- przychód, liczba sprzedaży, średnia cena, rabaty, wydatki i wynik potwierdzony;
-- porównanie obu sklepów oraz sprzedaży stacjonarnej i targowej;
-- bieżąca liczba i wartość metkowa produktów dostępnych i znajdujących się na targach;
-- alerty produktów bez zdjęcia, kosztu oraz długo zalegających na stanie;
-- rankingi kategorii, nazw produktów, marek, dni, miesięcy i pór roku;
-- analityka kanałów, płatności oraz wydarzeń targowych;
-- automatyczne zestawienie w zakładce `10_ANALITYKA`;
-- konfigurowalne stawki orientacyjnej estymacji podatku dla każdego sklepu;
-- kontrola kompletności przed zamknięciem miesiąca;
-- wykrywanie brakujących i niezamkniętych raportów dziennych;
-- blokada sprzedaży, raportów i wydatków po zamknięciu miesiąca;
-- kreator aktualizacji oraz nowe pozycje menu arkusza.
-- szerokie, niezależne okno aplikacji na komputerze zamiast wąskiego panelu bocznego;
-- szerokość robocza do 1120 px i układ responsywny na telefonie;
-- pojedyncze otwarcie skoroszytu podczas jednego żądania;
-- pamięć podręczna dashboardu i analityki;
-- brak blokowania pozostałych funkcji podczas ładowania panelu;
-- komunikat diagnostyczny, jeśli odpowiedź przekroczy 45 sekund.
-- nowy widok `Magazyn` z wyszukiwaniem do 100 produktów jednocześnie;
-- filtrowanie po sklepie, statusie, nazwie, ID, marce, materiale i komentarzu;
-- edycja metadanych, ceny, kosztu, stanu, wady i komentarza produktu;
-- rezerwacja produktu oraz zwolnienie rezerwacji;
-- obsługa statusów: zwrócony, do naprawy, wycofany i zagubiony;
-- przywrócenie zwróconego lub naprawionego produktu do sprzedaży;
-- nowy widok `Transakcje` z wyszukiwaniem historii sprzedaży;
-- anulowanie błędnie zapisanej sprzedaży z automatycznym przywróceniem produktu;
-- zwrot klienta jako osobna ujemna korekta finansowa;
-- zachowanie sprzedaży pierwotnej i zwrotu w odpowiednich miesiącach;
-- aktualizacja raportów, analityki, targów i wyników miesięcznych o korekty;
-- blokada anulowania wpisu z zamkniętego miesiąca;
-- pełny log zmian statusów, edycji produktów, anulowań i zwrotów.
-
-Jeśli dokumenty wydatków mają trafiać do innego folderu niż zdjęcia produktów, dodaj w `12_USTAWIENIA` pozycję `FOLDER_DOKUMENTY_ID`. Gdy jej nie ma, aplikacja wykorzysta folder `FOLDER_ZDJĘCIA_ID`.
-
-Estymacja podatku jest narzędziem pomocniczym. Stawki należy ustawić zgodnie z informacją od księgowości; aplikacja nie wybiera samodzielnie formy opodatkowania.
-
-Przed użyciem produkcyjnym należy przeprowadzić testy na przykładowych produktach w kopii roboczej.
+Pełna instrukcja awaryjna znajduje się w `INSTRUKCJA_AWARYJNA.md`, a lista funkcji w `ZAKRES_PRODUKTU.md`.

@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '1.2.0'
+  VERSION: '2.0.0'
 });
 let VP_BOOK_;
 
@@ -10,7 +10,7 @@ function onOpen() {
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj aktualizację 1.2.0', 'installVersion120')
+    .addItem('Przygotuj wersję finalną 2.0.0', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -52,10 +52,27 @@ function installVersion120() {
   installVersion110();
 }
 
+function installFinalVersion() {
+  const user=assertAuthorized_();
+  ensureSetting_('WERSJA',VP.VERSION,'Aktualna wersja aplikacji');
+  ensureSetting_('STAWKA_PODATKU_TP',0.03,'Stawka estymacji podatku TWINS PICK');
+  ensureSetting_('STAWKA_PODATKU_VV',0.03,'Stawka estymacji podatku VILANA VINTAGE');
+  ensureSetting_('STAWKA_VAT_TP',0.23,'Stawka VAT TWINS PICK');
+  ensureSetting_('STAWKA_VAT_VV',0.23,'Stawka VAT VILANA VINTAGE');
+  ensureSetting_('PODSTAWA_PODATKU','Przychód netto po VAT','Przychód brutto / Przychód netto po VAT / Wynik potwierdzony');
+  ensureSetting_('LEGACY_EXPENSE_SPREADSHEET_ID','1z7OT3vFHh4N0397YcpAVnY1yr0OkUhbfoRsqcneTzRM','Źródłowy plik historycznych wydatków');
+  ensureSetting_('LEGACY_EXPENSE_START_YEAR',2025,'Rok pierwszego miesiąca w historycznym pliku kosztów');
+  ensureSetting_('FOLDER_BACKUP_ID','','Opcjonalny folder kopii bezpieczeństwa');
+  ensureSetting_('PRÓG_STAREGO_TOWARU_DNI',180,'Próg alertu starego stanu');
+  refreshAnalyticsSheet();
+  appendLog_(user,'arkusz','INSTALACJA_FINALNA','aplikacja',VP.VERSION,'',VP.VERSION,'');
+  SpreadsheetApp.getUi().alert('Vintage PRO',`Wersja finalna ${VP.VERSION} jest przygotowana. Przed importem historii utwórz kopię bezpieczeństwa w zakładce Administracja.`,SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
 function getDashboardData(input) {
   assertAuthorized_(); input=input||{};
   const range=reportRange_(input), salesSheet=sheet_(VP.SHEETS.SALES), expenseSheet=sheet_(VP.SHEETS.EXPENSES), productSheet=sheet_(VP.SHEETS.PRODUCTS);
-  const cache=CacheService.getUserCache(), cacheKey=['DASH120',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
+  const cache=CacheService.getUserCache(), cacheKey=['DASH200',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
   const sales=filteredSales_(range,salesSheet), expenses=filteredExpenses_(range,expenseSheet), products=dataRows_(productSheet,42).filter(r=>r[0]&&r[35]!==false);
   const revenue=round2_(sum_(sales,14)), discounts=round2_(sum_(sales,13)), confirmed=sales.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''), margin=round2_(sum_(confirmed,18));
   const expense=round2_(expenses.reduce((s,r)=>s+allocatedExpense_(r,range.store),0)), result=round2_(margin-expense);
@@ -73,25 +90,26 @@ function getDashboardData(input) {
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA120',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
+  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA200',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
   const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
   const json=JSON.stringify(analysis); if(json.length<90000)cache.put(cacheKey,json,180); return analysis;
 }
 
 function saveTaxSettings(input) {
   const user=assertAuthorized_(); input=input||{};
-  const tp=rate_(input.rateTP), vv=rate_(input.rateVV); setSetting_('STAWKA_PODATKU_TP',tp); setSetting_('STAWKA_PODATKU_VV',vv);
-  appendLog_(user,'mobile/web','ZMIANA_USTAWIEŃ_PODATKU','ustawienia','PODATEK','',JSON.stringify({tp,vv}),'Estymacja orientacyjna');
-  return {ok:true,message:'Stawki estymacji zostały zapisane.',rates:{tp,vv}};
+  const tp=rate_(input.rateTP), vv=rate_(input.rateVV),vatTP=rate_(input.vatTP),vatVV=rate_(input.vatVV),base=input.base||'Przychód netto po VAT'; if(!['Przychód brutto','Przychód netto po VAT','Wynik potwierdzony'].includes(base))throw new Error('Nieprawidłowa podstawa estymacji podatku.');
+  setSetting_('STAWKA_PODATKU_TP',tp);setSetting_('STAWKA_PODATKU_VV',vv);setSetting_('STAWKA_VAT_TP',vatTP);setSetting_('STAWKA_VAT_VV',vatVV);setSetting_('PODSTAWA_PODATKU',base);
+  appendLog_(user,'mobile/web','ZMIANA_USTAWIEŃ_PODATKU','ustawienia','PODATEK','',JSON.stringify({tp,vv,vatTP,vatVV,base}),'Estymacja orientacyjna');
+  return {ok:true,message:'Ustawienia estymacji zostały zapisane.',rates:{tp,vv,vatTP,vatVV},base};
 }
 
 function getMonthCloseData(period) {
   assertAuthorized_(); period=normalizePeriod_(period); const finance=refreshMonthlyFinance_(period), reports=dataRows_(sheet_(VP.SHEETS.DAILY),19).filter(r=>r[0]&&monthKey_(r[1])===period), openReports=reports.filter(r=>!r[18]).length;
   const saleDays=[...new Set(dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]!=='Anulowana'&&monthKey_(r[2]||r[1])===period).map(r=>dateKey_(r[2]||r[1])))];
   const missingReports=saleDays.filter(day=>{const same=reports.filter(r=>dateKey_(r[1])===day&&r[18]);return !same.some(r=>r[2]==='Oba sklepy')&&!(same.some(r=>r[2]==='TWINS PICK')&&same.some(r=>r[2]==='VILANA VINTAGE'));});
-  const rates={tp:rateFromSetting_('STAWKA_PODATKU_TP'),vv:rateFromSetting_('STAWKA_PODATKU_VV')};
-  const stores=finance.map(x=>{const rate=x.store==='TWINS PICK'?rates.tp:rates.vv;return Object.assign({},x,{taxRate:rate,taxEstimate:round2_(Math.max(0,x.result)*rate),ready:x.status==='Kompletne'||x.status==='Zamknięte'});});
-  return {period,stores,openReports,missingReports,rates,ready:openReports===0&&missingReports.length===0&&stores.every(x=>x.ready),warning:'Estymacja podatku jest orientacyjna i wymaga potwierdzenia przez księgowość.'};
+  const rates={tp:rateFromSetting_('STAWKA_PODATKU_TP'),vv:rateFromSetting_('STAWKA_PODATKU_VV'),vatTP:rateFromSetting_('STAWKA_VAT_TP'),vatVV:rateFromSetting_('STAWKA_VAT_VV')},base=getSetting_('PODSTAWA_PODATKU')||'Przychód netto po VAT';
+  const stores=finance.map(x=>{const rate=x.store==='TWINS PICK'?rates.tp:rates.vv,vatRate=x.store==='TWINS PICK'?rates.vatTP:rates.vatVV,vatEstimate=vatRate?round2_(Math.max(0,x.revenue)*vatRate/(1+vatRate)):0,netRevenue=round2_(x.revenue-vatEstimate),taxBase=base==='Przychód brutto'?x.revenue:base==='Wynik potwierdzony'?x.result:netRevenue;return Object.assign({},x,{taxRate:rate,vatRate,vatEstimate,netRevenue,taxBase:round2_(Math.max(0,taxBase)),taxEstimate:round2_(Math.max(0,taxBase)*rate),ready:x.status==='Kompletne'||x.status==='Zamknięte'});});
+  return {period,stores,openReports,missingReports,rates,base,ready:openReports===0&&missingReports.length===0&&stores.every(x=>x.ready),warning:'Estymacja VAT i podatku jest orientacyjna i wymaga potwierdzenia przez księgowość.'};
 }
 
 function closeMonth(period) {
@@ -453,6 +471,67 @@ function refreshMonthlyFinance_(period) {
     output.push({store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,count:units,shop,fairs,cash,card,other,completeness:complete,status:row[19]});
   }); return output;
 }
+
+function previewLegacySales() {
+  assertAuthorized_(); const ss=book_(), existing=new Set(dataRows_(sheet_(VP.SHEETS.SALES),25).map(r=>String(r[0]))), details=[];let total=0,already=0,invalid=0;
+  ss.getSheets().filter(sh=>/^Sprzedaż\s+(?!wzór)/i.test(sh.getName())).forEach(sh=>{const rows=sh.getDataRange().getValues();let count=0,old=0,bad=0,lastDate=null;for(let i=2;i<rows.length;i++){const r=rows[i];if(r[0])lastDate=validDate_(r[0]);[['TP',1,2],['VV',4,5]].forEach(x=>{if(!clean_(r[x[1]]))return;const id=`LEGSALE-${sh.getSheetId()}-${i+1}-${x[0]}`;if(existing.has(id)){old++;already++;return;}if(!lastDate||!Number.isFinite(Number(r[x[2]]))){bad++;invalid++;return;}count++;total++;});}details.push({sheet:sh.getName(),newRows:count,alreadyImported:old,invalid:bad});});return{total,already,invalid,details};
+}
+
+function importLegacySales() {
+  const user=assertAuthorized_();assertRecentBackup_();const lock=LockService.getDocumentLock();lock.waitLock(30000);try{const ss=book_(),salesSh=sheet_(VP.SHEETS.SALES),productsSh=sheet_(VP.SHEETS.PRODUCTS),existingSales=new Set(dataRows_(salesSh,25).map(r=>String(r[0]))),productIds=dataRows_(productsSh,42).map(r=>String(r[0])),counters={TP:maxNumericId_(productIds,'TP'),VV:maxNumericId_(productIds,'VV')},productRows=[],saleRows=[],daily={},periods=new Set(),now=new Date();
+    ss.getSheets().filter(sh=>/^Sprzedaż\s+(?!wzór)/i.test(sh.getName())).forEach(sh=>{
+      const rows=sh.getDataRange().getValues();let lastDate=null;
+      for(let i=2;i<rows.length;i++){
+        const r=rows[i];if(r[0])lastDate=validDate_(r[0]);
+        [['TP','TWINS PICK',1,2,3],['VV','VILANA VINTAGE',4,5,6]].forEach(x=>{
+          const name=clean_(r[x[2]]),price=Number(r[x[3]]);if(!name)return;
+          const saleId=`LEGSALE-${sh.getSheetId()}-${i+1}-${x[0]}`;if(existingSales.has(saleId)||!lastDate||!Number.isFinite(price))return;
+          const productId=`${x[0]}-${String(++counters[x[0]]).padStart(6,'0')}`,category=inferCategory_(name),payment=normalizePayment_(r[x[4]]),source=`${sh.getName()} · wiersz ${i+1}`;
+          productRows.push(legacyProductRow_(productId,x[1],name,category,price,lastDate,saleId,user,now,source));
+          saleRows.push([saleId,lastDate,lastDate,x[1],productId,name,'',category,'Sklep stacjonarny','',price,'Brak','',0,price,payment,'','Nieznany','',`Import historyczny: ${source}`,'Aktywna',user,now,'','']);
+          existingSales.add(saleId);const day=dateKey_(lastDate);daily[day]=daily[day]||{date:lastDate,total:0,cash:0,card:0,other:0};daily[day].total+=price;
+          if(payment==='Gotówka')daily[day].cash+=price;else if(payment==='Karta')daily[day].card+=price;else daily[day].other+=price;periods.add(monthKey_(lastDate));
+        });
+      }
+    });
+    appendRows_(productsSh,productRows,42);appendRows_(salesSh,saleRows,25);const dailySh=sheet_(VP.SHEETS.DAILY),existingDaily=dataRows_(dailySh,19),dailyRows=[];Object.keys(daily).forEach(day=>{if(existingDaily.some(r=>r[0]&&dateKey_(r[1])===day&&r[2]==='Oba sklepy'))return;const d=daily[day];dailyRows.push([uniqueId_('DAY'),d.date,'Oba sklepy',round2_(d.total),round2_(d.cash),round2_(d.card),round2_(d.other),round2_(d.total),round2_(d.card),round2_(d.cash),0,0,0,'Zgodny','Automatyczny raport z importu historycznego',user,now,now,true]);});appendRows_(dailySh,dailyRows,19);periods.forEach(p=>refreshMonthlyFinance_(p));appendLog_(user,'arkusz','IMPORT_HISTORII_SPRZEDAŻY','import','legacy-sales','',JSON.stringify({sales:saleRows.length,products:productRows.length,reports:dailyRows.length}),'');return{ok:true,message:`Zaimportowano ${saleRows.length} sprzedaży, ${productRows.length} kart produktów i ${dailyRows.length} raportów archiwalnych.`};
+  }finally{lock.releaseLock();}
+}
+
+function previewLegacyExpenses() {
+  assertAuthorized_();const sourceId=getSetting_('LEGACY_EXPENSE_SPREADSHEET_ID');if(!sourceId)throw new Error('Brak LEGACY_EXPENSE_SPREADSHEET_ID w ustawieniach.');const sh=SpreadsheetApp.openById(sourceId).getSheets()[0],rows=sh.getDataRange().getValues(),existing=new Set(dataRows_(sheet_(VP.SHEETS.EXPENSES),30).map(r=>String(r[0])));let total=0,already=0,invalid=0;for(let i=2;i<rows.length;i++){const r=rows[i],id=`LEGEXP-${String(i+1).padStart(6,'0')}`;if(!clean_(r[2]))continue;if(existing.has(id)){already++;continue;}if(!polishMonth_(r[1])||!Number.isFinite(Number(r[3]))){invalid++;continue;}total++;}return{sheet:sh.getName(),total,already,invalid};
+}
+
+function importLegacyExpenses() {
+  const user=assertAuthorized_();assertRecentBackup_();const lock=LockService.getDocumentLock();lock.waitLock(30000);try{const sourceId=getSetting_('LEGACY_EXPENSE_SPREADSHEET_ID');if(!sourceId)throw new Error('Brak identyfikatora pliku historycznych wydatków.');const source=SpreadsheetApp.openById(sourceId).getSheets()[0],rows=source.getDataRange().getValues(),target=sheet_(VP.SHEETS.EXPENSES),existing=new Set(dataRows_(target,30).map(r=>String(r[0]))),startYear=Number(getSetting_('LEGACY_EXPENSE_START_YEAR'))||2025,now=new Date(),out=[],periods=new Set();let year=startYear,previous=0;
+    for(let i=2;i<rows.length;i++){const r=rows[i],description=clean_(r[2]),month=polishMonth_(r[1]),gross=Number(r[3]),id=`LEGEXP-${String(i+1).padStart(6,'0')}`;if(!description||existing.has(id)||!month||!Number.isFinite(gross))continue;if(previous&&month<previous)year++;previous=month;const period=`${year}-${String(month).padStart(2,'0')}`,date=new Date(year,month-1,1,12),paidBy=normalizePayer_(r[5]),settled=normalize_(r[6])==='tak',costTP=round2_(gross/2),costVV=round2_(gross-costTP),reimbursement=paidBy==='Lana'?costTP:paidBy==='Twinsy'?costVV:0,returned=settled?reimbursement:0,status=!reimbursement?'Nie wymaga rozliczenia':settled?'Rozliczone':'Nierozliczone',note=clean_(r[7]),legacyVat=Number(r[8]),comment=[`Import historyczny: ${source.getName()} wiersz ${i+1}`,note,Number.isFinite(legacyVat)?`W starym pliku pole „podatek -23%”: ${legacyVat.toFixed(2)} zł — do weryfikacji księgowej.`:''].filter(Boolean).join(' | ');out.push([id,date,period,description,inferExpenseCategory_(description),'Wspólny',inferAccountingClass_(description),'','',gross,paidBy,'',0.5,0.5,costTP,costVV,reimbursement,status,returned,settled?date:'',settled?'Import historyczny':'','',note,'Do potwierdzenia','','','',comment,user,now]);periods.add(period);existing.add(id);}
+    appendRows_(target,out,30);periods.forEach(p=>refreshMonthlyFinance_(p));appendLog_(user,'arkusz','IMPORT_HISTORII_WYDATKÓW','import','legacy-expenses','',JSON.stringify({expenses:out.length}),'');return{ok:true,message:`Zaimportowano ${out.length} historycznych wydatków.`};
+  }finally{lock.releaseLock();}
+}
+
+function runHealthCheck() {
+  const user=assertAuthorized_(),checks=[],add=(status,label,detail)=>checks.push({status,label,detail});let ss;try{ss=book_();add('OK','Połączenie z bazą',ss.getName());}catch(e){add('BŁĄD','Połączenie z bazą',e.message);return{version:VP.VERSION,checks};}
+  Object.values(VP.SHEETS).forEach(name=>add(ss.getSheetByName(name)?'OK':'BŁĄD',`Zakładka ${name}`,ss.getSheetByName(name)?'Dostępna':'Brak zakładki'));
+  const products=dataRows_(sheet_(VP.SHEETS.PRODUCTS),42),sales=dataRows_(sheet_(VP.SHEETS.SALES),25),pids=products.filter(r=>r[0]).map(r=>String(r[0])),sids=sales.filter(r=>r[0]).map(r=>String(r[0])),dupP=duplicateCount_(pids),dupS=duplicateCount_(sids),pSet=new Set(pids),orphans=sales.filter(r=>r[0]&&r[4]&&!pSet.has(String(r[4]))).length;add(dupP?'BŁĄD':'OK','Unikatowe ID produktów',dupP?`${dupP} duplikatów`:'Bez duplikatów');add(dupS?'BŁĄD':'OK','Unikatowe ID sprzedaży',dupS?`${dupS} duplikatów`:'Bez duplikatów');add(orphans?'BŁĄD':'OK','Powiązania sprzedaży',orphans?`${orphans} transakcji bez produktu`:'Wszystkie transakcje mają produkt');
+  const users=dataRows_(sheet_(VP.SHEETS.USERS),8).filter(r=>r[0]&&r[3]===true&&r[4]===true).length;add(users?'OK':'BŁĄD','Użytkownicy aplikacji',users?`${users} aktywnych kont`:'Brak aktywnego konta z dostępem mobilnym');['FOLDER_ZDJĘCIA_ID','FOLDER_DOKUMENTY_ID'].forEach(key=>{const id=getSetting_(key);if(!id||['ADDS','DOCS'].includes(id)){add('UWAGA',key,'Nie skonfigurowano prawidłowego ID folderu');return;}try{DriveApp.getFolderById(id).getName();add('OK',key,'Folder dostępny');}catch(e){add('BŁĄD',key,'Brak dostępu lub nieprawidłowe ID');}});add('OK','Wersja kodu',VP.VERSION);appendLog_(user,'arkusz','DIAGNOSTYKA','aplikacja',VP.VERSION,'',JSON.stringify(checks.map(x=>x.status)),'');return{version:VP.VERSION,checks,summary:{errors:checks.filter(x=>x.status==='BŁĄD').length,warnings:checks.filter(x=>x.status==='UWAGA').length}};
+}
+
+function createBackup() {
+  const user=assertAuthorized_(),file=DriveApp.getFileById(VP.SPREADSHEET_ID),name=`Vintage PRO BACKUP ${Utilities.formatDate(new Date(),Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM-dd HH-mm')}`,folderId=getSetting_('FOLDER_BACKUP_ID');let copy;if(folderId){copy=file.makeCopy(name,DriveApp.getFolderById(folderId));}else copy=file.makeCopy(name);PropertiesService.getScriptProperties().setProperty('LAST_BACKUP_AT',String(Date.now()));appendLog_(user,'arkusz','KOPIA_BEZPIECZEŃSTWA','plik',copy.getId(),'',copy.getUrl(),'');return{ok:true,name,url:copy.getUrl(),message:`Utworzono kopię „${name}”.`};
+}
+
+function assertRecentBackup_(){const t=Number(PropertiesService.getScriptProperties().getProperty('LAST_BACKUP_AT'));if(!t||Date.now()-t>86400000)throw new Error('Przed importem utwórz kopię bezpieczeństwa. Backup jest ważny przez 24 godziny.');}
+function validDate_(v){if(!v)return null;const d=v instanceof Date?new Date(v):new Date(v);if(isNaN(d.getTime()))return null;d.setHours(12,0,0,0);return d;}
+function maxNumericId_(ids,prefix){return ids.reduce((m,id)=>{const x=String(id).match(new RegExp(`^${prefix}-(\\d+)$`));return x?Math.max(m,Number(x[1])):m;},0);}
+function appendRows_(sh,rows,width){if(!rows.length)return;sh.getRange(sh.getLastRow()+1,1,rows.length,width).setValues(rows);}
+function duplicateCount_(values){const seen=new Set();let n=0;values.forEach(v=>{if(seen.has(v))n++;else seen.add(v);});return n;}
+function normalizePayment_(v){const n=normalize_(v);if(n.includes('got'))return'Gotówka';if(n.includes('kart')||n.includes('terminal'))return'Karta';if(n.includes('blik'))return'BLIK';if(n.includes('przelew'))return'Przelew';return'Inna';}
+function inferCategory_(name){const n=normalize_(name),rules=[['Sukienki',['sukien']],['Biżuteria',['naszyj','kolczy','branso','pierscion','bizuter']],['Spodnie',['spodni','jeans']],['Spódnice',['spodnic']],['Koszule i bluzki',['koszul','bluzk']],['Kurtki i płaszcze',['kurtk','plaszcz']],['Swetry',['swetr','kardigan']],['Torebki',['toreb']],['Buty',['but','kozaki','sandaly']],['Akcesoria',['pasek','apaszk','szal','czapk']]];const hit=rules.find(x=>x[1].some(k=>n.includes(k)));return hit?hit[0]:'Inne';}
+function legacyProductRow_(id,store,name,category,price,date,saleId,user,now,source){return[id,store,name,'',category,'','','','','','','','Vintage / nieustalony',false,'','',false,price,'','Nieznany','','','',store,'','Sprzedany w sklepie',date,date,saleId,`Import historyczny: ${source}`,false,user,now,user,now,'','','','','','','Brak zdjęcia'];}
+function polishMonth_(v){const n=normalize_(v),months=['styczen','luty','marzec','kwiecien','maj','czerwiec','lipiec','sierpien','wrzesien','pazdziernik','listopad','grudzien'];const i=months.findIndex(m=>n.startsWith(m));return i<0?0:i+1;}
+function normalizePayer_(v){const n=normalize_(v);if(n.includes('lana'))return'Lana';if(n.includes('twin'))return'Twinsy';return'Inne';}
+function inferExpenseCategory_(v){const n=normalize_(v);if(n.includes('czynsz'))return'Czynsz';if(n.includes('prad')||n.includes('energia')||n.includes('media')||n.includes('internet'))return'Media';if(n.includes('podatek'))return'Podatki';if(n.includes('towar'))return'Zakup towaru';if(n.includes('targ'))return'Targi';if(n.includes('reklam')||n.includes('marketing'))return'Marketing';return'Inne';}
+function inferAccountingClass_(v){const n=normalize_(v);if(n.includes('kaucj'))return'Kaucja zwrotna';if(n.includes('podatek'))return'Podatek';if(n.includes('towar'))return'Zakup towaru';if(n.includes('wyposaz')||n.includes('remont'))return'Inwestycja / wyposażenie';return'Do potwierdzenia';}
 
 function assertAuthorized_() {
   const email = Session.getActiveUser().getEmail();
