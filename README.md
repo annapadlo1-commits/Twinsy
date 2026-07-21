@@ -1,4 +1,4 @@
-# Vintage PRO 1.0.1 — moduł operacyjny i zdjęcia
+# Vintage PRO 1.0.2 — raport dzienny i targi
 
 Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 
@@ -13,6 +13,13 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 7. Odśwież arkusz i zaakceptuj wymagane uprawnienia.
 8. Wybierz **Wdróż → Nowe wdrożenie → Aplikacja internetowa**. Uruchamianie: użytkownik korzystający z aplikacji. Dostęp: użytkownicy z kontem Google.
 9. Otwórz otrzymany link na telefonie i dodaj go do ekranu początkowego.
+
+## Aktualizacja z wersji 1.0.1
+
+1. W projekcie Apps Script zastąp zawartość `Code.gs` i `Mobile.html` plikami z paczki.
+2. Kliknij **Wdróż → Zarządzaj wdrożeniami**.
+3. Otwórz aktywne wdrożenie, kliknij ikonę ołówka i wybierz **Nowa wersja**.
+4. Kliknij **Wdróż**. Adres aplikacji zakończony `/exec` pozostaje ten sam.
 
 ## Zakres tego etapu
 
@@ -29,5 +36,13 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 - szybka sprzedaż produktu, którego nie ma jeszcze w bazie;
 - utworzenie karty produktu i sprzedaży w jednym przepływie;
 - rozszerzony rejestr wydatków i wzajemnych rozliczeń.
+- wspólne i sklepowe raporty dzienne z automatycznym podsumowaniem sprzedaży;
+- porównanie aplikacji z raportem papierowym, terminalem i faktyczną gotówką;
+- wykrywanie różnic i opcjonalne nieodwracalne zamknięcie raportu;
+- tworzenie wydarzeń targowych;
+- wydawanie produktów na targi i zwrot niesprzedanych produktów;
+- osobne liczniki i przychody targowe TWINS PICK oraz VILANA VINTAGE;
+- blokada zamknięcia targów, dopóki niesprzedane produkty nie wrócą do sklepów;
+- pełny rejestr ruchów towaru i log operacji.
 
 Przed użyciem produkcyjnym należy przeprowadzić testy na przykładowych produktach w kopii roboczej.
