@@ -1,13 +1,16 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
-  SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG' },
-  VERSION: '1.0.2'
+  SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
+  VERSION: '1.1.0'
 });
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('VINTAGE PRO')
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
+    .addSeparator()
+    .addItem('Przygotuj aktualizację 1.1.0', 'installVersion110')
+    .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
 
@@ -30,7 +33,73 @@ function checkConfiguration() {
 function getBootstrapData() {
   const user = assertAuthorized_();
   const d = getDictionaries_();
-  return { user, stores: d[0], categories: d[1], origins: d[3], styles: d[4], conditions: d[5], defects: d[8], costStatuses: d[9], payments: d[12], discounts: d[13], movementTypes: d[15], fairs: listFairs_(), version: VP.VERSION };
+  return { user, stores: d[0], categories: d[1], origins: d[3], styles: d[4], conditions: d[5], defects: d[8], costStatuses: d[9], payments: d[12], discounts: d[13], expenseCategories: d[14], movementTypes: d[15], fairs: listFairs_(), version: VP.VERSION };
+}
+
+function installVersion110() {
+  const user=assertAuthorized_();
+  ensureSetting_('WERSJA',VP.VERSION,'Aktualna wersja aplikacji');
+  ensureSetting_('STAWKA_PODATKU_TP',0,'Szacunkowa stawka podatku TWINS PICK, np. 0,12');
+  ensureSetting_('STAWKA_PODATKU_VV',0,'Szacunkowa stawka podatku VILANA VINTAGE, np. 0,12');
+  ensureSetting_('PODSTAWA_PODATKU','Wynik potwierdzony','Estymacja orientacyjna; ustawienia wymagają potwierdzenia księgowej');
+  ensureSetting_('PRÓG_STAREGO_TOWARU_DNI',180,'Po ilu dniach produkt ma trafić do alertu starego stanu');
+  refreshAnalyticsSheet();
+  appendLog_(user,'arkusz','AKTUALIZACJA','aplikacja',VP.VERSION,'',VP.VERSION,'');
+  SpreadsheetApp.getUi().alert('Vintage PRO',`Aktualizacja ${VP.VERSION} została przygotowana.`,SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function getDashboardData(input) {
+  assertAuthorized_(); input=input||{};
+  const range=reportRange_(input), sales=filteredSales_(range), expenses=filteredExpenses_(range), products=dataRows_(sheet_(VP.SHEETS.PRODUCTS),42).filter(r=>r[0]&&r[35]!==false);
+  const revenue=round2_(sum_(sales,14)), discounts=round2_(sum_(sales,13)), confirmed=sales.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''), margin=round2_(sum_(confirmed,18));
+  const expense=round2_(expenses.reduce((s,r)=>s+allocatedExpense_(r,range.store),0)), result=round2_(margin-expense);
+  const storeRows=['TWINS PICK','VILANA VINTAGE'].filter(s=>range.store==='Oba sklepy'||range.store===s).map(store=>dashboardStore_(store,sales,expenses));
+  const available=products.filter(r=>r[25]==='Dostępny'&&(range.store==='Oba sklepy'||r[1]===range.store));
+  const onFair=products.filter(r=>r[25]==='Na targach'&&(range.store==='Oba sklepy'||r[1]===range.store));
+  const noPhoto=available.filter(r=>!r[37]).length, unknownCost=available.filter(r=>r[19]==='Nieznany'||r[22]==='').length;
+  const oldDays=Math.max(1,numberOrZero_(getSetting_('PRÓG_STAREGO_TOWARU_DNI'))||180), cutoff=new Date(); cutoff.setDate(cutoff.getDate()-oldDays);
+  const oldStock=available.filter(r=>r[26] instanceof Date&&r[26]<cutoff).length;
+  const highDiscount=Number(optionalNumber_(getSetting_('PRÓG_WYSOKIEGO_RABATU'))||0.2), highDiscountSales=sales.filter(r=>numberOrZero_(r[10])>0&&numberOrZero_(r[13])/numberOrZero_(r[10])>=highDiscount).length;
+  return {range,summary:{revenue,count:sales.length,average:sales.length?round2_(revenue/sales.length):0,discounts,margin,expenses:expense,result,confirmedShare:sales.length?confirmed.length/sales.length:1},stores:storeRows,
+    channels:groupMoney_(sales,8,14),payments:groupMoney_(sales,15,14),stock:{available:available.length,tagValue:round2_(sum_(available,17)),onFair:onFair.length,noPhoto,unknownCost,oldStock},
+    alerts:[noPhoto?`${noPhoto} produktów bez zdjęcia`:'',unknownCost?`${unknownCost} dostępnych produktów bez potwierdzonego kosztu`:'',oldStock?`${oldStock} produktów na stanie dłużej niż ${oldDays} dni`:'',highDiscountSales?`${highDiscountSales} sprzedaży z wysokim rabatem`:''].filter(Boolean)};
+}
+
+function getAnalyticsData(input) {
+  assertAuthorized_(); const range=reportRange_(input||{}), sales=filteredSales_(range);
+  const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
+  return analysis;
+}
+
+function saveTaxSettings(input) {
+  const user=assertAuthorized_(); input=input||{};
+  const tp=rate_(input.rateTP), vv=rate_(input.rateVV); setSetting_('STAWKA_PODATKU_TP',tp); setSetting_('STAWKA_PODATKU_VV',vv);
+  appendLog_(user,'mobile/web','ZMIANA_USTAWIEŃ_PODATKU','ustawienia','PODATEK','',JSON.stringify({tp,vv}),'Estymacja orientacyjna');
+  return {ok:true,message:'Stawki estymacji zostały zapisane.',rates:{tp,vv}};
+}
+
+function getMonthCloseData(period) {
+  assertAuthorized_(); period=normalizePeriod_(period); const finance=refreshMonthlyFinance_(period), reports=dataRows_(sheet_(VP.SHEETS.DAILY),19).filter(r=>r[0]&&monthKey_(r[1])===period), openReports=reports.filter(r=>!r[18]).length;
+  const saleDays=[...new Set(dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]==='Aktywna'&&monthKey_(r[2]||r[1])===period).map(r=>dateKey_(r[2]||r[1])))];
+  const missingReports=saleDays.filter(day=>{const same=reports.filter(r=>dateKey_(r[1])===day&&r[18]);return !same.some(r=>r[2]==='Oba sklepy')&&!(same.some(r=>r[2]==='TWINS PICK')&&same.some(r=>r[2]==='VILANA VINTAGE'));});
+  const rates={tp:rateFromSetting_('STAWKA_PODATKU_TP'),vv:rateFromSetting_('STAWKA_PODATKU_VV')};
+  const stores=finance.map(x=>{const rate=x.store==='TWINS PICK'?rates.tp:rates.vv;return Object.assign({},x,{taxRate:rate,taxEstimate:round2_(Math.max(0,x.result)*rate),ready:x.status==='Kompletne'||x.status==='Zamknięte'});});
+  return {period,stores,openReports,missingReports,rates,ready:openReports===0&&missingReports.length===0&&stores.every(x=>x.ready),warning:'Estymacja podatku jest orientacyjna i wymaga potwierdzenia przez księgowość.'};
+}
+
+function closeMonth(period) {
+  const user=assertAuthorized_(), data=getMonthCloseData(period); if(data.stores.length&&data.stores.every(x=>x.status==='Zamknięte')) throw new Error('Ten miesiąc jest już zamknięty.'); if(!data.ready) throw new Error('Nie można zamknąć miesiąca: uzupełnij koszty produktów i zamknij raporty dzienne.');
+  const sh=sheet_(VP.SHEETS.FINANCE), rows=dataRows_(sh,20), now=new Date(); rows.forEach((r,i)=>{if(r[0]===data.period)sh.getRange(i+2,19,1,2).setValues([[now,'Zamknięte']]);});
+  appendLog_(user,'mobile/web','ZAMKNIJ_MIESIĄC','okres',data.period,'Otwarte','Zamknięte',''); return {ok:true,message:`Miesiąc ${data.period} został zamknięty.`,data:getMonthCloseData(data.period)};
+}
+
+function refreshAnalyticsSheet(input) {
+  const user=assertAuthorized_(), end=new Date(), start=new Date(end.getFullYear(),end.getMonth()-11,1), data=getAnalyticsData(input||{dateFrom:dateKey_(start),dateTo:dateKey_(end),store:'Oba sklepy'}), sh=sheet_(VP.SHEETS.ANALYTICS||'10_ANALITYKA');
+  sh.getRange(1,1,100,20).clearContent();
+  sh.getRange('A1:T1').breakApart().merge().setValue(`VINTAGE PRO — ANALITYKA · ${data.range.dateFrom}–${data.range.dateTo}`).setFontWeight('bold').setBackground('#eadde4');
+  writeRanking_(sh,3,1,'NAJLEPSZE KATEGORIE',data.topCategories); writeRanking_(sh,3,6,'NAJLEPSZE NAZWY PRODUKTÓW',data.topProducts); writeRanking_(sh,3,11,'NAJLEPSZE MARKI',data.topBrands); writeRanking_(sh,3,16,'DNI TYGODNIA',data.weekdays);
+  writeRanking_(sh,20,1,'NAJLEPSZE DNI',data.days); writeRanking_(sh,20,6,'MIESIĄCE',data.months); writeRanking_(sh,20,11,'PORY ROKU',data.seasons); writeRanking_(sh,20,16,'KANAŁY',data.channels);
+  sh.autoResizeColumns(1,20); appendLog_(user,'arkusz','ODŚWIEŻ_ANALITYKĘ','arkusz','10_ANALITYKA','',JSON.stringify(data.range),''); return {ok:true,message:'Analityka została odświeżona.',data};
 }
 
 function getDailySummary(dateText, scope) {
@@ -51,6 +120,7 @@ function saveDailyReport(input) {
   const user = assertAuthorized_();
   input = input || {};
   const day = parseDate_(input.date), scope = input.scope || 'Oba sklepy';
+  if (isMonthClosed_(monthKey_(day))) throw new Error('Ten miesiąc finansowy jest już zamknięty.');
   if (!['Oba sklepy','TWINS PICK','VILANA VINTAGE'].includes(scope)) throw new Error('Nieprawidłowy zakres raportu.');
   const summary = getDailySummary(dateKey_(day), scope);
   const paper = money_(input.paper), terminal = money_(input.terminal), actualCash = money_(input.actualCash);
@@ -182,6 +252,7 @@ function sellProduct(input) {
   require_(input.productId, 'Wybierz produkt.');
   require_(input.payment, 'Wybierz formę płatności.');
   const finalPrice = money_(input.finalPrice);
+  if (isMonthClosed_(monthKey_(new Date()))) throw new Error('Bieżący miesiąc finansowy jest zamknięty.');
   if (finalPrice < 0) throw new Error('Cena sprzedaży nie może być ujemna.');
 
   const lock = LockService.getDocumentLock();
@@ -215,12 +286,14 @@ function sellProduct(input) {
     sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,r[0],r[1],'Sprzedaż',r[23],'Klient',input.eventId||r[24]||'','Nie dotyczy',clean_(input.comment),user,now,saleId]);
     if (channel === 'Targi') refreshFairStats_(saleEventId);
     appendLog_(user, 'mobile/web', 'SPRZEDAJ_PRODUKT', 'produkt', r[0], r[25], channel === 'Targi' ? 'Sprzedany na targach' : 'Sprzedany w sklepie', input.comment || '');
+    refreshMonthlyFinance_(monthKey_(now));
     return { ok:true, saleId, discountValue, message:`Sprzedano ${r[2]} za ${finalPrice.toFixed(2)} zł.` };
   } finally { lock.releaseLock(); }
 }
 
 function quickSellProduct(input) {
   assertAuthorized_();
+  if (isMonthClosed_(monthKey_(new Date()))) throw new Error('Bieżący miesiąc finansowy jest zamknięty.');
   input = input || {};
   const created = addProduct({
     store: input.store, name: input.name, brand: input.brand, category: input.category,
@@ -257,17 +330,88 @@ function addExpense(input) {
   input = input || {};
   require_(input.description, 'Wpisz opis wydatku.');
   require_(input.paidBy, 'Wybierz, kto zapłacił.');
+  require_(input.category, 'Wybierz kategorię wydatku.');
   const gross = money_(input.grossAmount);
-  const shareTP = optionalNumber_(input.shareTP) === '' ? 0.5 : Number(input.shareTP);
-  const shareVV = optionalNumber_(input.shareVV) === '' ? 0.5 : Number(input.shareVV);
+  if (gross <= 0) throw new Error('Kwota wydatku musi być większa od zera.');
+  const costType = input.costType || 'Wspólny';
+  if (costType === 'Indywidualny' && !input.store) throw new Error('Wskaż sklep, którego dotyczy koszt indywidualny.');
+  const shareTP = costType === 'Wspólny' ? 0.5 : (input.store === 'TWINS PICK' ? 1 : 0);
+  const shareVV = costType === 'Wspólny' ? 0.5 : (input.store === 'VILANA VINTAGE' ? 1 : 0);
   if (Math.abs(shareTP + shareVV - 1) > 0.0001) throw new Error('Udziały kosztu muszą sumować się do 100%.');
   const id = uniqueId_('EXP'), now = new Date();
   const costTP = Math.round(gross * shareTP * 100) / 100, costVV = Math.round(gross * shareVV * 100) / 100;
-  const reimbursement = input.costType === 'Wspólny' ? (String(input.paidBy).toLowerCase().includes('lana') ? costVV : costTP) : 0;
-  sheet_(VP.SHEETS.EXPENSES).appendRow([id,input.date?new Date(input.date):now,input.month||'',clean_(input.description),input.category||'Inne',input.costType||'Wspólny',input.accountingClass||'Do potwierdzenia',
-    optionalMoney_(input.netAmount),optionalMoney_(input.vatAmount),gross,input.paidBy,input.payment||'',shareTP,shareVV,costTP,costVV,reimbursement,input.settlementStatus||'Nierozliczone',0,'','',input.documentType||'',clean_(input.invoiceTo),input.taxCost||'Do potwierdzenia',input.eventId||'','','',clean_(input.comment),user,now]);
+  const reimbursement = input.paidBy === 'Lana' ? costTP : (input.paidBy === 'Twinsy' ? costVV : 0);
+  const attachment = input.attachmentDataUrl ? saveAttachment_(input.attachmentDataUrl,id,input.attachmentName) : null;
+  const period = input.month || monthKey_(input.date ? parseDate_(input.date) : now);
+  if (isMonthClosed_(period)) throw new Error('Ten miesiąc finansowy jest już zamknięty.');
+  const settlementStatus = reimbursement > 0 ? 'Nierozliczone' : 'Nie wymaga rozliczenia';
+  sheet_(VP.SHEETS.EXPENSES).appendRow([id,input.date?parseDate_(input.date):now,period,clean_(input.description),input.category,costType,input.accountingClass||'Do potwierdzenia',
+    optionalMoney_(input.netAmount),optionalMoney_(input.vatAmount),gross,input.paidBy,input.payment||'',shareTP,shareVV,costTP,costVV,reimbursement,settlementStatus,0,'','',input.documentType||'',clean_(input.invoiceTo),input.taxCost||'Do potwierdzenia',input.eventId||'','','',clean_(input.comment),user,now]);
+  const rowNo = sheet_(VP.SHEETS.EXPENSES).getLastRow();
+  sheet_(VP.SHEETS.EXPENSES).getRange(rowNo,18).setValue(settlementStatus);
+  if (attachment) sheet_(VP.SHEETS.EXPENSES).getRange(rowNo,26,1,2).setValues([[attachment.url,attachment.id]]);
   appendLog_(user,'mobile/web','DODAJ_WYDATEK','wydatek',id,'',JSON.stringify({gross,paidBy:input.paidBy}),input.comment||'');
-  return {ok:true,id,message:`Dodano wydatek ${gross.toFixed(2)} zł.`};
+  refreshMonthlyFinance_(period);
+  return {ok:true,id,reimbursement,message:`Dodano wydatek ${gross.toFixed(2)} zł${reimbursement?` · do rozliczenia ${reimbursement.toFixed(2)} zł`:''}.`};
+}
+
+function getSettlementSummary(period) {
+  assertAuthorized_();
+  period = normalizePeriod_(period);
+  const expenses = dataRows_(sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0] && normalizePeriod_(r[2] || monthKey_(r[1])) === period);
+  const settlements = dataRows_(sheet_(VP.SHEETS.SETTLEMENTS),20).filter(r=>r[0] && normalizePeriod_(r[2]) === period && r[11] === 'Aktywne');
+  const expenseBalance = expenses.reduce((s,r)=>{
+    const open=Math.max(0,numberOrZero_(r[16])-numberOrZero_(r[18]));
+    return s+(r[10]==='Lana'?open:r[10]==='Twinsy'?-open:0);
+  },0);
+  const balance=round2_(expenseBalance), direction=balance>0?'Twinsy → Lana':balance<0?'Lana → Twinsy':'Rozliczone';
+  const total=expenses.reduce((s,r)=>s+numberOrZero_(r[9]),0), shared=expenses.filter(r=>r[5]==='Wspólny').reduce((s,r)=>s+numberOrZero_(r[9]),0);
+  return {period,count:expenses.length,total:round2_(total),shared:round2_(shared),costTP:round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[14]),0)),costVV:round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[15]),0)),paidLana:round2_(expenses.filter(r=>r[10]==='Lana').reduce((s,r)=>s+numberOrZero_(r[9]),0)),paidTwinsy:round2_(expenses.filter(r=>r[10]==='Twinsy').reduce((s,r)=>s+numberOrZero_(r[9]),0)),balance,direction,finance:refreshMonthlyFinance_(period),settlements:settlements.map(r=>({id:r[0],date:dateKey_(r[1]),payer:r[3],recipient:r[4],amount:numberOrZero_(r[5]),method:r[6],comment:r[10]}))};
+}
+
+function addSettlement(input) {
+  const user=assertAuthorized_(); input=input||{}; const period=normalizePeriod_(input.period), summary=getSettlementSummary(period), amount=money_(input.amount);
+  require_(input.payer,'Wybierz płatnika.'); require_(input.recipient,'Wybierz odbiorcę.');
+  if(input.payer===input.recipient) throw new Error('Płatnik i odbiorca muszą być różni.');
+  if(amount<=0) throw new Error('Kwota rozliczenia musi być większa od zera.');
+  const expectedPayer=summary.balance>0?'Twinsy':summary.balance<0?'Lana':'', expectedRecipient=summary.balance>0?'Lana':summary.balance<0?'Twinsy':'';
+  if(!expectedPayer) throw new Error('Ten okres jest już rozliczony.');
+  if(input.payer!==expectedPayer || input.recipient!==expectedRecipient) throw new Error(`Aktualny kierunek rozliczenia to ${summary.direction}.`);
+  if(amount>Math.abs(summary.balance)+0.01) throw new Error(`Kwota przekracza saldo ${Math.abs(summary.balance).toFixed(2)} zł.`);
+  const id=uniqueId_('SET'), now=new Date(), after=round2_(Math.abs(summary.balance)-amount);
+  sheet_(VP.SHEETS.SETTLEMENTS).appendRow([id,input.date?parseDate_(input.date):now,period,input.payer,input.recipient,amount,input.method||'Przelew','',Math.abs(summary.balance),after,clean_(input.comment),'Aktywne',user,now,'','','','',Boolean(input.approved),input.approved?user:'']);
+  allocateSettlement_(period,input.recipient,amount,input.method,now);
+  appendLog_(user,'mobile/web','DODAJ_ROZLICZENIE','rozliczenie',id,summary.balance,after,input.comment||'');
+  return {ok:true,id,message:`Zapisano rozliczenie ${amount.toFixed(2)} zł (${input.payer} → ${input.recipient}).`,summary:getSettlementSummary(period)};
+}
+
+function allocateSettlement_(period, creditor, amount, method, date) {
+  const sh=sheet_(VP.SHEETS.EXPENSES), rows=dataRows_(sh,30); let left=amount;
+  rows.forEach((r,i)=>{
+    if(left<=0 || !r[0] || normalizePeriod_(r[2]||monthKey_(r[1]))!==period || r[10]!==creditor) return;
+    const due=Math.max(0,numberOrZero_(r[16])-numberOrZero_(r[18])); if(!due) return;
+    const applied=Math.min(left,due), returned=round2_(numberOrZero_(r[18])+applied), status=returned+0.01>=numberOrZero_(r[16])?'Rozliczone':'Częściowo rozliczone';
+    sh.getRange(i+2,18,1,4).setValues([[status,returned,date,method||'Przelew']]); left=round2_(left-applied);
+  });
+}
+
+function refreshMonthlyFinance_(period) {
+  period=normalizePeriod_(period); const now=new Date();
+  const sales=dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]==='Aktywna'&&monthKey_(r[2]||r[1])===period);
+  const expenses=dataRows_(sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&normalizePeriod_(r[2]||monthKey_(r[1]))===period);
+  const sh=sheet_(VP.SHEETS.FINANCE), existing=dataRows_(sh,20), output=[];
+  ['TWINS PICK','VILANA VINTAGE'].forEach(store=>{
+    const ss=sales.filter(r=>r[3]===store), known=ss.filter(r=>r[17]==='Potwierdzony'&&r[16]!==''), unknown=ss.filter(r=>r[17]!=='Potwierdzony'||r[16]==='');
+    const revenue=round2_(ss.reduce((s,r)=>s+numberOrZero_(r[14]),0)), discounts=round2_(ss.reduce((s,r)=>s+numberOrZero_(r[13]),0));
+    const cogs=round2_(known.reduce((s,r)=>s+numberOrZero_(r[16]),0)), unknownRevenue=round2_(unknown.reduce((s,r)=>s+numberOrZero_(r[14]),0)), margin=round2_(known.reduce((s,r)=>s+numberOrZero_(r[18]),0));
+    const col=store==='TWINS PICK'?14:15, individual=round2_(expenses.filter(r=>r[5]==='Indywidualny').reduce((s,r)=>s+numberOrZero_(r[col]),0)), shared=round2_(expenses.filter(r=>r[5]==='Wspólny').reduce((s,r)=>s+numberOrZero_(r[col]),0));
+    const result=round2_(margin-individual-shared), shop=round2_(ss.filter(r=>r[8]==='Sklep stacjonarny').reduce((s,r)=>s+numberOrZero_(r[14]),0)), fairs=round2_(ss.filter(r=>r[8]==='Targi').reduce((s,r)=>s+numberOrZero_(r[14]),0));
+    const cash=round2_(ss.filter(r=>r[15]==='Gotówka').reduce((s,r)=>s+numberOrZero_(r[14]),0)), card=round2_(ss.filter(r=>r[15]==='Karta').reduce((s,r)=>s+numberOrZero_(r[14]),0)), other=round2_(revenue-cash-card), completeness=ss.length?round2_(known.length/ss.length):1;
+    const old=existing.find(r=>r[0]&&normalizePeriod_(r[0])===period&&r[1]===store), status=old&&old[19]==='Zamknięte'?'Zamknięte':unknown.length?'Niepełne':'Kompletne';
+    const row=[period,store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,ss.length,shop,fairs,cash,card,other,completeness,unknown.length?`${unknown.length} sprzedaży bez potwierdzonego kosztu`:'',now,status];
+    const index=existing.findIndex(r=>r[0]&&normalizePeriod_(r[0])===period&&r[1]===store); if(index>=0)sh.getRange(index+2,1,1,20).setValues([row]);else sh.appendRow(row);
+    output.push({store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,count:ss.length,shop,fairs,cash,card,other,completeness,status:row[19]});
+  }); return output;
 }
 
 function assertAuthorized_() {
@@ -306,6 +450,8 @@ function getSetting_(key) {
   const sh = sheet_(VP.SHEETS.SETTINGS), values = sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),2).getDisplayValues();
   const hit = values.find(r => r[0] === key); return hit ? hit[1] : '';
 }
+function setSetting_(key,value) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0)sh.getRange(i+2,2).setValue(value);else sh.appendRow([key,value,'']); }
+function ensureSetting_(key,value,description) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0){if(key==='WERSJA')sh.getRange(i+2,2).setValue(value);return;} sh.appendRow([key,value,description]); }
 function saveImage_(dataUrl, productId, context) {
   const folderId = getSetting_('FOLDER_ZDJĘCIA_ID');
   if (!folderId) throw new Error('Najpierw wpisz ID wspólnego folderu zdjęć w 12_USTAWIENIA.');
@@ -316,6 +462,17 @@ function saveImage_(dataUrl, productId, context) {
   if (blob.getBytes().length > 2500000) throw new Error('Zdjęcie jest zbyt duże. Spróbuj ponownie.');
   const file = DriveApp.getFolderById(folderId).createFile(blob);
   return {id:file.getId(),url:file.getUrl()};
+}
+function saveAttachment_(dataUrl, objectId, originalName) {
+  const folderId=getSetting_('FOLDER_DOKUMENTY_ID')||getSetting_('FOLDER_ZDJĘCIA_ID');
+  if(!folderId) throw new Error('Wpisz ID folderu dokumentów lub zdjęć w 12_USTAWIENIA.');
+  const match=String(dataUrl).match(/^data:([a-zA-Z0-9/+.-]+);base64,(.+)$/); if(!match) throw new Error('Nieprawidłowy format załącznika.');
+  if(!/^image\//.test(match[1]) && match[1]!=='application/pdf') throw new Error('Dozwolone są zdjęcia i pliki PDF.');
+  const ext=match[1]==='application/pdf'?'pdf':match[1].includes('png')?'png':'jpg';
+  const safe=clean_(originalName).replace(/[^a-zA-Z0-9._-]+/g,'-').slice(-60)||`dokument.${ext}`;
+  const blob=Utilities.newBlob(Utilities.base64Decode(match[2]),match[1],`${objectId}-${Date.now()}-${safe}`);
+  if(blob.getBytes().length>5000000) throw new Error('Załącznik jest większy niż 5 MB.');
+  const file=DriveApp.getFolderById(folderId).createFile(blob); return {id:file.getId(),url:file.getUrl()};
 }
 function nextProductId_(store, sh) {
   const prefix = store === 'TWINS PICK' ? 'TP' : 'VV';
@@ -341,3 +498,19 @@ function dataRows_(sh,width){ const last=sh.getLastRow(); return last<2?[]:sh.ge
 function parseDate_(v){ const s=clean_(v); if(!s) throw new Error('Wybierz datę.'); const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); const d=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])):new Date(v); if(isNaN(d.getTime())) throw new Error('Nieprawidłowa data.'); d.setHours(12,0,0,0); return d; }
 function dateKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?'':Utilities.formatDate(d,Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM-dd'); }
 function sameDay_(a,b){ return dateKey_(a)===dateKey_(b); }
+function monthKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?'':Utilities.formatDate(d,Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM'); }
+function normalizePeriod_(v){ const s=clean_(v); const m=s.match(/^(\d{4})[-./](\d{1,2})$/); if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`; const d=new Date(v); if(!isNaN(d.getTime())) return monthKey_(d); throw new Error('Wybierz prawidłowy miesiąc rozliczeniowy.'); }
+function isMonthClosed_(period){period=normalizePeriod_(period);return dataRows_(sheet_(VP.SHEETS.FINANCE),20).some(r=>r[0]&&normalizePeriod_(r[0])===period&&r[19]==='Zamknięte');}
+function reportRange_(input){const end=input.dateTo?parseDate_(input.dateTo):parseDate_(dateKey_(new Date())),start=input.dateFrom?parseDate_(input.dateFrom):new Date(end.getFullYear(),end.getMonth(),1);if(start>end)throw new Error('Data od nie może być późniejsza niż data do.');return{dateFrom:dateKey_(start),dateTo:dateKey_(end),start,end,store:input.store||'Oba sklepy',channel:input.channel||'Wszystkie'};}
+function filteredSales_(range){return dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>{if(!r[0]||r[20]!=='Aktywna')return false;const d=r[2]||r[1];return dateKey_(d)>=range.dateFrom&&dateKey_(d)<=range.dateTo&&(range.store==='Oba sklepy'||r[3]===range.store)&&(range.channel==='Wszystkie'||r[8]===range.channel);});}
+function filteredExpenses_(range){return dataRows_(sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&dateKey_(r[1])>=range.dateFrom&&dateKey_(r[1])<=range.dateTo);}
+function allocatedExpense_(r,store){if(store==='TWINS PICK')return numberOrZero_(r[14]);if(store==='VILANA VINTAGE')return numberOrZero_(r[15]);return numberOrZero_(r[14])+numberOrZero_(r[15]);}
+function dashboardStore_(store,sales,expenses){const ss=sales.filter(r=>r[3]===store),known=ss.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''),col=store==='TWINS PICK'?14:15,revenue=round2_(sum_(ss,14)),expense=round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[col]),0)),margin=round2_(sum_(known,18));return{store,revenue,count:ss.length,average:ss.length?round2_(revenue/ss.length):0,discounts:round2_(sum_(ss,13)),margin,expenses:expense,result:round2_(margin-expense),confirmedShare:ss.length?known.length/ss.length:1};}
+function sum_(rows,col){return rows.reduce((s,r)=>s+numberOrZero_(r[col]),0);}
+function groupMoney_(rows,keyCol,valueCol){const m={};rows.forEach(r=>{const k=clean_(r[keyCol])||'Brak';m[k]=round2_((m[k]||0)+numberOrZero_(r[valueCol]));});return Object.keys(m).map(k=>({label:k,value:m[k]})).sort((a,b)=>b.value-a.value);}
+function rankSales_(rows,key,max){const m={};rows.forEach(r=>{const k=clean_(typeof key==='function'?key(r):r[key]);if(!k)return;const x=m[k]||(m[k]={label:k,count:0,revenue:0,discount:0});x.count++;x.revenue+=numberOrZero_(r[14]);x.discount+=numberOrZero_(r[13]);});return Object.values(m).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count?round2_(x.revenue/x.count):0,discount:round2_(x.discount)})).sort((a,b)=>b.revenue-a.revenue||b.count-a.count).slice(0,max||10);}
+function weekday_(v){const d=v instanceof Date?v:new Date(v);return['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'][d.getDay()];}
+function season_(v){const d=v instanceof Date?v:new Date(v),m=d.getMonth()+1;return m===12||m<=2?'Zima':m<=5?'Wiosna':m<=8?'Lato':'Jesień';}
+function rate_(v){const n=Number(String(v==null?'':v).replace(',','.').replace('%','').trim());if(!Number.isFinite(n)||n<0)throw new Error('Wpisz prawidłową stawkę podatku.');const r=n>1?n/100:n;if(r>1)throw new Error('Stawka podatku nie może przekraczać 100%.');return r;}
+function rateFromSetting_(key){const v=getSetting_(key);return clean_(v)===''?0:rate_(v);}
+function writeRanking_(sh,row,col,title,data){sh.getRange(row,col,1,5).setValues([[title,'Liczba','Przychód','Średnia','Rabaty']]).setFontWeight('bold').setBackground('#eadde4');if(data.length){sh.getRange(row+1,col,data.length,5).setValues(data.map(x=>[x.label,x.count,x.revenue,x.average,x.discount]));sh.getRange(row+1,col+2,data.length,3).setNumberFormat('#,##0.00 "zł"');}}
