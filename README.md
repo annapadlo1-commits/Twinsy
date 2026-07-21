@@ -1,4 +1,4 @@
-# Vintage PRO 1.1.1 — poprawka szerokości i wydajności
+# Vintage PRO 1.2.0 — magazyn, zwroty i korekty
 
 Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 
@@ -14,13 +14,13 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 8. Wybierz **Wdróż → Nowe wdrożenie → Aplikacja internetowa**. Uruchamianie: użytkownik korzystający z aplikacji. Dostęp: użytkownicy z kontem Google.
 9. Otwórz otrzymany link na telefonie i dodaj go do ekranu początkowego.
 
-## Aktualizacja z wersji 1.1.0
+## Aktualizacja z wersji 1.1.1
 
 1. W projekcie Apps Script zastąp zawartość `Code.gs` i `Mobile.html` plikami z paczki.
 2. Kliknij **Wdróż → Zarządzaj wdrożeniami**.
 3. Otwórz aktywne wdrożenie, kliknij ikonę ołówka i wybierz **Nowa wersja**.
 4. Kliknij **Wdróż**. Adres aplikacji zakończony `/exec` pozostaje ten sam.
-5. Odśwież arkusz, wybierz z menu **VINTAGE PRO → Przygotuj aktualizację 1.1.1** i zaakceptuj wykonanie.
+5. Odśwież arkusz, wybierz z menu **VINTAGE PRO → Przygotuj aktualizację 1.2.0** i zaakceptuj wykonanie.
 
 ## Zakres tego etapu
 
@@ -75,6 +75,19 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 - pamięć podręczna dashboardu i analityki;
 - brak blokowania pozostałych funkcji podczas ładowania panelu;
 - komunikat diagnostyczny, jeśli odpowiedź przekroczy 45 sekund.
+- nowy widok `Magazyn` z wyszukiwaniem do 100 produktów jednocześnie;
+- filtrowanie po sklepie, statusie, nazwie, ID, marce, materiale i komentarzu;
+- edycja metadanych, ceny, kosztu, stanu, wady i komentarza produktu;
+- rezerwacja produktu oraz zwolnienie rezerwacji;
+- obsługa statusów: zwrócony, do naprawy, wycofany i zagubiony;
+- przywrócenie zwróconego lub naprawionego produktu do sprzedaży;
+- nowy widok `Transakcje` z wyszukiwaniem historii sprzedaży;
+- anulowanie błędnie zapisanej sprzedaży z automatycznym przywróceniem produktu;
+- zwrot klienta jako osobna ujemna korekta finansowa;
+- zachowanie sprzedaży pierwotnej i zwrotu w odpowiednich miesiącach;
+- aktualizacja raportów, analityki, targów i wyników miesięcznych o korekty;
+- blokada anulowania wpisu z zamkniętego miesiąca;
+- pełny log zmian statusów, edycji produktów, anulowań i zwrotów.
 
 Jeśli dokumenty wydatków mają trafiać do innego folderu niż zdjęcia produktów, dodaj w `12_USTAWIENIA` pozycję `FOLDER_DOKUMENTY_ID`. Gdy jej nie ma, aplikacja wykorzysta folder `FOLDER_ZDJĘCIA_ID`.
 

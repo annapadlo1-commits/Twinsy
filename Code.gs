@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '1.1.1'
+  VERSION: '1.2.0'
 });
 let VP_BOOK_;
 
@@ -10,7 +10,7 @@ function onOpen() {
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj aktualizację 1.1.1', 'installVersion110')
+    .addItem('Przygotuj aktualizację 1.2.0', 'installVersion120')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -48,10 +48,14 @@ function installVersion110() {
   SpreadsheetApp.getUi().alert('Vintage PRO',`Aktualizacja ${VP.VERSION} została przygotowana.`,SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
+function installVersion120() {
+  installVersion110();
+}
+
 function getDashboardData(input) {
   assertAuthorized_(); input=input||{};
   const range=reportRange_(input), salesSheet=sheet_(VP.SHEETS.SALES), expenseSheet=sheet_(VP.SHEETS.EXPENSES), productSheet=sheet_(VP.SHEETS.PRODUCTS);
-  const cache=CacheService.getUserCache(), cacheKey=['DASH111',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
+  const cache=CacheService.getUserCache(), cacheKey=['DASH120',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
   const sales=filteredSales_(range,salesSheet), expenses=filteredExpenses_(range,expenseSheet), products=dataRows_(productSheet,42).filter(r=>r[0]&&r[35]!==false);
   const revenue=round2_(sum_(sales,14)), discounts=round2_(sum_(sales,13)), confirmed=sales.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''), margin=round2_(sum_(confirmed,18));
   const expense=round2_(expenses.reduce((s,r)=>s+allocatedExpense_(r,range.store),0)), result=round2_(margin-expense);
@@ -62,14 +66,14 @@ function getDashboardData(input) {
   const oldDays=Math.max(1,numberOrZero_(getSetting_('PRÓG_STAREGO_TOWARU_DNI'))||180), cutoff=new Date(); cutoff.setDate(cutoff.getDate()-oldDays);
   const oldStock=available.filter(r=>r[26] instanceof Date&&r[26]<cutoff).length;
   const highDiscount=Number(optionalNumber_(getSetting_('PRÓG_WYSOKIEGO_RABATU'))||0.2), highDiscountSales=sales.filter(r=>numberOrZero_(r[10])>0&&numberOrZero_(r[13])/numberOrZero_(r[10])>=highDiscount).length;
-  const resultData={range,summary:{revenue,count:sales.length,average:sales.length?round2_(revenue/sales.length):0,discounts,margin,expenses:expense,result,confirmedShare:sales.length?confirmed.length/sales.length:1},stores:storeRows,
+  const units=sales.reduce((s,r)=>s+saleUnits_(r),0),confirmedUnits=confirmed.reduce((s,r)=>s+saleUnits_(r),0),resultData={range,summary:{revenue,count:units,average:units>0?round2_(revenue/units):0,discounts,margin,expenses:expense,result,confirmedShare:units>0?Math.max(0,Math.min(1,confirmedUnits/units)):1},stores:storeRows,
     channels:groupMoney_(sales,8,14),payments:groupMoney_(sales,15,14),stock:{available:available.length,tagValue:round2_(sum_(available,17)),onFair:onFair.length,noPhoto,unknownCost,oldStock},
     alerts:[noPhoto?`${noPhoto} produktów bez zdjęcia`:'',unknownCost?`${unknownCost} dostępnych produktów bez potwierdzonego kosztu`:'',oldStock?`${oldStock} produktów na stanie dłużej niż ${oldDays} dni`:'',highDiscountSales?`${highDiscountSales} sprzedaży z wysokim rabatem`:''].filter(Boolean)};
   const json=JSON.stringify(resultData); if(json.length<90000)cache.put(cacheKey,json,180); return resultData;
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA111',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
+  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA120',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
   const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
   const json=JSON.stringify(analysis); if(json.length<90000)cache.put(cacheKey,json,180); return analysis;
 }
@@ -83,7 +87,7 @@ function saveTaxSettings(input) {
 
 function getMonthCloseData(period) {
   assertAuthorized_(); period=normalizePeriod_(period); const finance=refreshMonthlyFinance_(period), reports=dataRows_(sheet_(VP.SHEETS.DAILY),19).filter(r=>r[0]&&monthKey_(r[1])===period), openReports=reports.filter(r=>!r[18]).length;
-  const saleDays=[...new Set(dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]==='Aktywna'&&monthKey_(r[2]||r[1])===period).map(r=>dateKey_(r[2]||r[1])))];
+  const saleDays=[...new Set(dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]!=='Anulowana'&&monthKey_(r[2]||r[1])===period).map(r=>dateKey_(r[2]||r[1])))];
   const missingReports=saleDays.filter(day=>{const same=reports.filter(r=>dateKey_(r[1])===day&&r[18]);return !same.some(r=>r[2]==='Oba sklepy')&&!(same.some(r=>r[2]==='TWINS PICK')&&same.some(r=>r[2]==='VILANA VINTAGE'));});
   const rates={tp:rateFromSetting_('STAWKA_PODATKU_TP'),vv:rateFromSetting_('STAWKA_PODATKU_VV')};
   const stores=finance.map(x=>{const rate=x.store==='TWINS PICK'?rates.tp:rates.vv;return Object.assign({},x,{taxRate:rate,taxEstimate:round2_(Math.max(0,x.result)*rate),ready:x.status==='Kompletne'||x.status==='Zamknięte'});});
@@ -109,13 +113,13 @@ function getDailySummary(dateText, scope) {
   assertAuthorized_();
   const day = parseDate_(dateText);
   scope = scope || 'Oba sklepy';
-  const rows = dataRows_(sheet_(VP.SHEETS.SALES), 25).filter(r => r[0] && r[20] === 'Aktywna' && sameDay_(r[2] || r[1], day) && (scope === 'Oba sklepy' || r[3] === scope));
+  const rows = dataRows_(sheet_(VP.SHEETS.SALES), 25).filter(r => r[0] && r[20] !== 'Anulowana' && sameDay_(r[2] || r[1], day) && (scope === 'Oba sklepy' || r[3] === scope));
   const byPayment = rows.reduce((a,r) => { const key = clean_(r[15]) || 'Inna'; a[key] = (a[key] || 0) + numberOrZero_(r[14]); return a; }, {});
   const cash = byPayment['Gotówka'] || 0, card = byPayment['Karta'] || 0;
   const total = rows.reduce((s,r) => s + numberOrZero_(r[14]), 0);
   const other = total - cash - card;
   const existing = dataRows_(sheet_(VP.SHEETS.DAILY), 19).find(r => r[0] && sameDay_(r[1], day) && r[2] === scope);
-  return { date: dateKey_(day), scope, count: rows.length, total: round2_(total), cash: round2_(cash), card: round2_(card), other: round2_(other),
+  return { date: dateKey_(day), scope, count: rows.reduce((s,r)=>s+saleUnits_(r),0), total: round2_(total), cash: round2_(cash), card: round2_(card), other: round2_(other),
     existing: existing ? { paper:existing[7], terminal:existing[8], actualCash:existing[9], status:existing[13], comment:existing[14], closed:Boolean(existing[18]) } : null };
 }
 
@@ -247,6 +251,38 @@ function searchProducts(query, store) {
     id:r[0], store:r[1], name:r[2], brand:r[3], category:r[4], style:r[7], materials:r[8], size:r[10], color:r[11], condition:r[12],
     hasDefect:r[13], defect:r[15], tagPrice:r[17], location:r[23], eventId:r[24], status:r[25], comment:r[29], important:r[30], photoUrl:r[37] || ''
   }));
+}
+
+function searchInventory(query, store, status) {
+  assertAuthorized_(); const q=normalize_(query), rows=dataRows_(sheet_(VP.SHEETS.PRODUCTS),42);
+  return rows.filter(r=>r[0]&&r[35]!==false&&(!store||store==='Oba sklepy'||r[1]===store)&&(!status||status==='Wszystkie'||r[25]===status)&&(!q||normalize_([r[0],r[2],r[3],r[4],r[7],r[8],r[10],r[11],r[12],r[15],r[23],r[25],r[29]].join(' ')).includes(q))).slice(0,100).map(productDto_);
+}
+
+function getRecentSales(query, store, limit) {
+  assertAuthorized_(); const q=normalize_(query), rows=dataRows_(sheet_(VP.SHEETS.SALES),25), max=Math.min(Math.max(Number(limit)||50,1),100);
+  return rows.filter(r=>r[0]&&(!store||store==='Oba sklepy'||r[3]===store)&&(!q||normalize_([r[0],r[4],r[5],r[6],r[7],r[19],r[24]].join(' ')).includes(q))).sort((a,b)=>new Date(b[1])-new Date(a[1])).slice(0,max).map(r=>({id:r[0],date:dateKey_(r[2]||r[1]),dateTime:r[1] instanceof Date?r[1].toISOString():String(r[1]),store:r[3],productId:r[4],name:r[5],brand:r[6],category:r[7],channel:r[8],eventId:r[9],tagPrice:numberOrZero_(r[10]),discount:numberOrZero_(r[13]),price:numberOrZero_(r[14]),payment:r[15],margin:r[18],comment:r[19],status:r[20],correctionTo:r[23],reason:r[24]}));
+}
+
+function changeProductStatus(input) {
+  const user=assertAuthorized_(); input=input||{}; require_(input.productId,'Wybierz produkt.'); require_(input.status,'Wybierz nowy status.');
+  const transitions={Dostępny:['Zarezerwowany','Do naprawy','Wycofany','Zagubiony / brak'],Zarezerwowany:['Dostępny','Wycofany'],Zwrócony:['Dostępny','Do naprawy','Wycofany'],'Do naprawy':['Dostępny','Wycofany'],'Zagubiony / brak':['Dostępny','Wycofany']};
+  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS), rows=dataRows_(sh,42), i=rows.findIndex(r=>String(r[0])===String(input.productId));if(i<0)throw new Error('Nie znaleziono produktu.');const r=rows[i],allowed=transitions[r[25]]||[];if(!allowed.includes(input.status))throw new Error(`Zmiana „${r[25]}” → „${input.status}” nie jest dozwolona.`);const now=new Date(),comment=[clean_(r[29]),clean_(input.comment)].filter(Boolean).join(' | ');sh.getRange(i+2,24,1,13).setValues([[input.status==='Dostępny'?r[1]:r[23],input.status==='Dostępny'?'':r[24],input.status,r[26],r[27],r[28],comment,r[30],r[31],r[32],now,user,r[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,r[0],r[1],statusMoveType_(r[25],input.status),r[23],input.status==='Dostępny'?r[1]:input.status,r[24],'Nie dotyczy',clean_(input.comment),user,now,'']);appendLog_(user,'mobile/web','ZMIANA_STATUSU','produkt',r[0],r[25],input.status,input.comment||'');return{ok:true,message:`Status produktu zmieniono na „${input.status}”.`};}finally{lock.releaseLock();}
+}
+
+function updateProduct(input) {
+  const user=assertAuthorized_();input=input||{};require_(input.productId,'Brak ID produktu.');require_(input.name,'Nazwa produktu jest wymagana.');require_(input.category,'Kategoria jest wymagana.');
+  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS),rows=dataRows_(sh,42),i=rows.findIndex(r=>String(r[0])===String(input.productId));if(i<0)throw new Error('Nie znaleziono produktu.');const r=rows[i],now=new Date(),defect=Boolean(input.hasDefect);if(defect&&!clean_(input.defectDescription))throw new Error('Opisz wadę produktu.');const purchase=optionalMoney_(input.purchaseCost),materials=optionalMoney_(input.materialCost),labor=optionalMoney_(input.laborCost),costStatus=input.costStatus||'Nieznany',total=costStatus==='Nieznany'?'':numberOrZero_(purchase)+numberOrZero_(materials)+numberOrZero_(labor);const fields=[clean_(input.name),clean_(input.brand),input.category,clean_(input.subcategory),input.origin||r[6],clean_(input.style),clean_(input.materials),clean_(input.composition),clean_(input.size),clean_(input.color),input.condition||r[12],defect,clean_(input.defectType),clean_(input.defectDescription),Boolean(input.defectInPrice),money_(input.tagPrice),purchase,costStatus,materials,labor,total];sh.getRange(i+2,3,1,21).setValues([fields]);sh.getRange(i+2,30,1,8).setValues([[clean_(input.comment),Boolean(input.important),r[31],r[32],now,user,r[35],searchKey_(input)]]);appendLog_(user,'mobile/web','EDYTUJ_PRODUKT','produkt',r[0],JSON.stringify({name:r[2],price:r[17]}),JSON.stringify({name:input.name,price:input.tagPrice}),input.comment||'');return{ok:true,message:`Zapisano zmiany produktu ${r[0]}.`};}finally{lock.releaseLock();}
+}
+
+function cancelSale(input) { return reverseSale_(input,false); }
+function returnSale(input) { return reverseSale_(input,true); }
+
+function reverseSale_(input,isReturn) {
+  const user=assertAuthorized_();input=input||{};require_(input.saleId,'Wybierz transakcję.');require_(input.reason,'Wpisz powód operacji.');const now=new Date();if(isMonthClosed_(monthKey_(now)))throw new Error('Bieżący miesiąc finansowy jest zamknięty.');
+  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sales=sheet_(VP.SHEETS.SALES),rows=dataRows_(sales,25),i=rows.findIndex(r=>String(r[0])===String(input.saleId));if(i<0)throw new Error('Nie znaleziono transakcji.');const s=rows[i];if(!isReturn&&isMonthClosed_(monthKey_(s[2]||s[1])))throw new Error('Nie można anulować wpisu z zamkniętego miesiąca. Użyj zwrotu klienta w bieżącym okresie.');if(s[20]!=='Aktywna')throw new Error(`Transakcja ma status „${s[20]}” i nie może zostać zmieniona.`);if(s[23])throw new Error('Nie można korygować wiersza korekty.');const products=sheet_(VP.SHEETS.PRODUCTS),pr=dataRows_(products,42),pi=pr.findIndex(r=>String(r[0])===String(s[4]));if(pi<0)throw new Error('Nie znaleziono produktu powiązanego ze sprzedażą.');const p=pr[pi];if(String(p[28])!==String(s[0]))throw new Error('Produkt nie jest już powiązany z tą transakcją. Operacja została zatrzymana.');
+    if(isReturn){const correctionId=uniqueId_('CORR'),cost=s[16]===''?'':-numberOrZero_(s[16]),margin=s[18]===''?'':-numberOrZero_(s[18]);sales.getRange(i+2,21).setValue('Skorygowana');sales.appendRow([correctionId,now,now,s[3],s[4],s[5],s[6],s[7],s[8],s[9],0,'Zwrot klienta','',0,-numberOrZero_(s[14]),s[15],cost,s[17],margin,clean_(input.reason),'Aktywna',user,now,s[0],clean_(input.reason)]);products.getRange(pi+2,24,1,13).setValues([[s[3],'','Zwrócony',p[26],now,correctionId,[clean_(p[29]),`Zwrot: ${clean_(input.reason)}`].filter(Boolean).join(' | '),true,p[31],p[32],now,user,p[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,p[0],p[1],'Zwrot klienta','Klient','Kontrola zwrotu','', 'Nie dotyczy',clean_(input.reason),user,now,correctionId]);appendLog_(user,'mobile/web','ZWROT_KLIENTA','sprzedaż',s[0],'Aktywna','Skorygowana',input.reason);refreshMonthlyFinance_(monthKey_(now));return{ok:true,message:`Zapisano zwrot ${moneyText_(s[14])}. Produkt oczekuje na kontrolę.`};}
+    sales.getRange(i+2,21,1,5).setValues([['Anulowana',s[21],s[22],s[23],clean_(input.reason)]]);products.getRange(pi+2,24,1,13).setValues([[p[1],'','Dostępny',p[26],'','',p[29],p[30],p[31],p[32],now,user,p[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,p[0],p[1],'Korekta','Klient',p[1],'','Nie dotyczy',clean_(input.reason),user,now,s[0]]);appendLog_(user,'mobile/web','ANULUJ_SPRZEDAŻ','sprzedaż',s[0],'Aktywna','Anulowana',input.reason);refreshMonthlyFinance_(monthKey_(s[2]||s[1]));return{ok:true,message:'Sprzedaż została anulowana, a produkt wrócił do stanu.'};
+  }finally{lock.releaseLock();}
 }
 
 function sellProduct(input) {
@@ -400,7 +436,7 @@ function allocateSettlement_(period, creditor, amount, method, date) {
 
 function refreshMonthlyFinance_(period) {
   period=normalizePeriod_(period); const now=new Date();
-  const sales=dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]==='Aktywna'&&monthKey_(r[2]||r[1])===period);
+  const sales=dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[0]&&r[20]!=='Anulowana'&&monthKey_(r[2]||r[1])===period);
   const expenses=dataRows_(sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&normalizePeriod_(r[2]||monthKey_(r[1]))===period);
   const sh=sheet_(VP.SHEETS.FINANCE), existing=dataRows_(sh,20), output=[];
   ['TWINS PICK','VILANA VINTAGE'].forEach(store=>{
@@ -409,11 +445,12 @@ function refreshMonthlyFinance_(period) {
     const cogs=round2_(known.reduce((s,r)=>s+numberOrZero_(r[16]),0)), unknownRevenue=round2_(unknown.reduce((s,r)=>s+numberOrZero_(r[14]),0)), margin=round2_(known.reduce((s,r)=>s+numberOrZero_(r[18]),0));
     const col=store==='TWINS PICK'?14:15, individual=round2_(expenses.filter(r=>r[5]==='Indywidualny').reduce((s,r)=>s+numberOrZero_(r[col]),0)), shared=round2_(expenses.filter(r=>r[5]==='Wspólny').reduce((s,r)=>s+numberOrZero_(r[col]),0));
     const result=round2_(margin-individual-shared), shop=round2_(ss.filter(r=>r[8]==='Sklep stacjonarny').reduce((s,r)=>s+numberOrZero_(r[14]),0)), fairs=round2_(ss.filter(r=>r[8]==='Targi').reduce((s,r)=>s+numberOrZero_(r[14]),0));
-    const cash=round2_(ss.filter(r=>r[15]==='Gotówka').reduce((s,r)=>s+numberOrZero_(r[14]),0)), card=round2_(ss.filter(r=>r[15]==='Karta').reduce((s,r)=>s+numberOrZero_(r[14]),0)), other=round2_(revenue-cash-card), completeness=ss.length?round2_(known.length/ss.length):1;
+    const cash=round2_(ss.filter(r=>r[15]==='Gotówka').reduce((s,r)=>s+numberOrZero_(r[14]),0)), card=round2_(ss.filter(r=>r[15]==='Karta').reduce((s,r)=>s+numberOrZero_(r[14]),0)), other=round2_(revenue-cash-card);
     const old=existing.find(r=>r[0]&&normalizePeriod_(r[0])===period&&r[1]===store), status=old&&old[19]==='Zamknięte'?'Zamknięte':unknown.length?'Niepełne':'Kompletne';
-    const row=[period,store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,ss.length,shop,fairs,cash,card,other,completeness,unknown.length?`${unknown.length} sprzedaży bez potwierdzonego kosztu`:'',now,status];
+    const units=ss.reduce((s,r)=>s+saleUnits_(r),0),knownUnits=known.reduce((s,r)=>s+saleUnits_(r),0),safeUnits=Math.max(0,units),complete=safeUnits?Math.max(0,Math.min(1,knownUnits/safeUnits)):1;
+    const row=[period,store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,units,shop,fairs,cash,card,other,complete,unknown.length?`${unknown.length} zapisów bez potwierdzonego kosztu`:'',now,status];
     const index=existing.findIndex(r=>r[0]&&normalizePeriod_(r[0])===period&&r[1]===store); if(index>=0)sh.getRange(index+2,1,1,20).setValues([row]);else sh.appendRow(row);
-    output.push({store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,count:ss.length,shop,fairs,cash,card,other,completeness,status:row[19]});
+    output.push({store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,count:units,shop,fairs,cash,card,other,completeness:complete,status:row[19]});
   }); return output;
 }
 
@@ -445,9 +482,9 @@ function refreshFairStats_(eventId) {
   if (index < 0) return;
   const moves = dataRows_(sheet_(VP.SHEETS.MOVES),13).filter(r=>String(r[7])===String(eventId) && r[4]==='Wydanie na targi');
   const takenTP = moves.filter(r=>r[3]==='TWINS PICK').length, takenVV = moves.filter(r=>r[3]==='VILANA VINTAGE').length;
-  const sales = dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[20]==='Aktywna' && String(r[9])===String(eventId));
+  const sales = dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>r[20]!=='Anulowana' && String(r[9])===String(eventId));
   const salesTP = sales.filter(r=>r[3]==='TWINS PICK'), salesVV = sales.filter(r=>r[3]==='VILANA VINTAGE');
-  fairs.getRange(index+2,10,1,6).setValues([[takenTP,takenVV,salesTP.length,salesVV.length,round2_(salesTP.reduce((s,r)=>s+numberOrZero_(r[14]),0)),round2_(salesVV.reduce((s,r)=>s+numberOrZero_(r[14]),0))]]);
+  fairs.getRange(index+2,10,1,6).setValues([[takenTP,takenVV,salesTP.reduce((s,r)=>s+saleUnits_(r),0),salesVV.reduce((s,r)=>s+saleUnits_(r),0),round2_(salesTP.reduce((s,r)=>s+numberOrZero_(r[14]),0)),round2_(salesVV.reduce((s,r)=>s+numberOrZero_(r[14]),0))]]);
 }
 function getSetting_(key) {
   const sh = sheet_(VP.SHEETS.SETTINGS), values = sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),2).getDisplayValues();
@@ -497,7 +534,11 @@ function money_(v){ const n=Number(String(v==null?'':v).replace(',','.').replace
 function optionalMoney_(v){ return clean_(v)===''?'':money_(v); }
 function optionalNumber_(v){ if(clean_(v)==='') return ''; const n=Number(String(v).replace(',','.')); return Number.isFinite(n)?n:''; }
 function numberOrZero_(v){ return v===''||v==null?0:Number(v)||0; }
+function moneyText_(v){return `${numberOrZero_(v).toFixed(2)} zł`;}
 function round2_(v){ return Math.round(numberOrZero_(v)*100)/100; }
+function saleUnits_(r){return r[23]&&numberOrZero_(r[14])<0?-1:1;}
+function productDto_(r){return{id:r[0],store:r[1],name:r[2],brand:r[3],category:r[4],subcategory:r[5],origin:r[6],style:r[7],materials:r[8],composition:r[9],size:r[10],color:r[11],condition:r[12],hasDefect:Boolean(r[13]),defectType:r[14],defect:r[15],defectInPrice:Boolean(r[16]),tagPrice:numberOrZero_(r[17]),purchaseCost:r[18],costStatus:r[19],materialCost:r[20],laborCost:r[21],totalCost:r[22],location:r[23],eventId:r[24],status:r[25],intakeDate:dateKey_(r[26]),saleDate:dateKey_(r[27]),saleId:r[28],comment:r[29],important:Boolean(r[30]),photoUrl:r[37]||'',photoStatus:r[41]||''};}
+function statusMoveType_(before,after){if(after==='Zarezerwowany')return'Rezerwacja';if(before==='Zarezerwowany'&&after==='Dostępny')return'Zwolnienie rezerwacji';if(after==='Wycofany')return'Wycofanie';if(after==='Dostępny')return'Korekta';return after;}
 function dataRows_(sh,width){ const last=sh.getLastRow(); return last<2?[]:sh.getRange(2,1,last-1,width).getValues(); }
 function parseDate_(v){ const s=clean_(v); if(!s) throw new Error('Wybierz datę.'); const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); const d=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])):new Date(v); if(isNaN(d.getTime())) throw new Error('Nieprawidłowa data.'); d.setHours(12,0,0,0); return d; }
 function dateKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?'':Utilities.formatDate(d,Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM-dd'); }
@@ -506,13 +547,13 @@ function monthKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v)
 function normalizePeriod_(v){ const s=clean_(v); const m=s.match(/^(\d{4})[-./](\d{1,2})$/); if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`; const d=new Date(v); if(!isNaN(d.getTime())) return monthKey_(d); throw new Error('Wybierz prawidłowy miesiąc rozliczeniowy.'); }
 function isMonthClosed_(period){period=normalizePeriod_(period);return dataRows_(sheet_(VP.SHEETS.FINANCE),20).some(r=>r[0]&&normalizePeriod_(r[0])===period&&r[19]==='Zamknięte');}
 function reportRange_(input){const end=input.dateTo?parseDate_(input.dateTo):parseDate_(dateKey_(new Date())),start=input.dateFrom?parseDate_(input.dateFrom):new Date(end.getFullYear(),end.getMonth(),1);if(start>end)throw new Error('Data od nie może być późniejsza niż data do.');return{dateFrom:dateKey_(start),dateTo:dateKey_(end),start,end,store:input.store||'Oba sklepy',channel:input.channel||'Wszystkie'};}
-function filteredSales_(range,sh){return dataRows_(sh||sheet_(VP.SHEETS.SALES),25).filter(r=>{if(!r[0]||r[20]!=='Aktywna')return false;const d=r[2]||r[1];return dateKey_(d)>=range.dateFrom&&dateKey_(d)<=range.dateTo&&(range.store==='Oba sklepy'||r[3]===range.store)&&(range.channel==='Wszystkie'||r[8]===range.channel);});}
+function filteredSales_(range,sh){return dataRows_(sh||sheet_(VP.SHEETS.SALES),25).filter(r=>{if(!r[0]||r[20]==='Anulowana')return false;const d=r[2]||r[1];return dateKey_(d)>=range.dateFrom&&dateKey_(d)<=range.dateTo&&(range.store==='Oba sklepy'||r[3]===range.store)&&(range.channel==='Wszystkie'||r[8]===range.channel);});}
 function filteredExpenses_(range,sh){return dataRows_(sh||sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&dateKey_(r[1])>=range.dateFrom&&dateKey_(r[1])<=range.dateTo);}
 function allocatedExpense_(r,store){if(store==='TWINS PICK')return numberOrZero_(r[14]);if(store==='VILANA VINTAGE')return numberOrZero_(r[15]);return numberOrZero_(r[14])+numberOrZero_(r[15]);}
-function dashboardStore_(store,sales,expenses){const ss=sales.filter(r=>r[3]===store),known=ss.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''),col=store==='TWINS PICK'?14:15,revenue=round2_(sum_(ss,14)),expense=round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[col]),0)),margin=round2_(sum_(known,18));return{store,revenue,count:ss.length,average:ss.length?round2_(revenue/ss.length):0,discounts:round2_(sum_(ss,13)),margin,expenses:expense,result:round2_(margin-expense),confirmedShare:ss.length?known.length/ss.length:1};}
+function dashboardStore_(store,sales,expenses){const ss=sales.filter(r=>r[3]===store),known=ss.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''),col=store==='TWINS PICK'?14:15,revenue=round2_(sum_(ss,14)),expense=round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[col]),0)),margin=round2_(sum_(known,18)),units=ss.reduce((s,r)=>s+saleUnits_(r),0),knownUnits=known.reduce((s,r)=>s+saleUnits_(r),0);return{store,revenue,count:units,average:units>0?round2_(revenue/units):0,discounts:round2_(sum_(ss,13)),margin,expenses:expense,result:round2_(margin-expense),confirmedShare:units>0?Math.max(0,Math.min(1,knownUnits/units)):1};}
 function sum_(rows,col){return rows.reduce((s,r)=>s+numberOrZero_(r[col]),0);}
 function groupMoney_(rows,keyCol,valueCol){const m={};rows.forEach(r=>{const k=clean_(r[keyCol])||'Brak';m[k]=round2_((m[k]||0)+numberOrZero_(r[valueCol]));});return Object.keys(m).map(k=>({label:k,value:m[k]})).sort((a,b)=>b.value-a.value);}
-function rankSales_(rows,key,max){const m={};rows.forEach(r=>{const k=clean_(typeof key==='function'?key(r):r[key]);if(!k)return;const x=m[k]||(m[k]={label:k,count:0,revenue:0,discount:0});x.count++;x.revenue+=numberOrZero_(r[14]);x.discount+=numberOrZero_(r[13]);});return Object.values(m).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count?round2_(x.revenue/x.count):0,discount:round2_(x.discount)})).sort((a,b)=>b.revenue-a.revenue||b.count-a.count).slice(0,max||10);}
+function rankSales_(rows,key,max){const m={};rows.forEach(r=>{const k=clean_(typeof key==='function'?key(r):r[key]);if(!k)return;const x=m[k]||(m[k]={label:k,count:0,revenue:0,discount:0});x.count+=saleUnits_(r);x.revenue+=numberOrZero_(r[14]);x.discount+=numberOrZero_(r[13]);});return Object.values(m).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count>0?round2_(x.revenue/x.count):0,discount:round2_(x.discount)})).sort((a,b)=>b.revenue-a.revenue||b.count-a.count).slice(0,max||10);}
 function weekday_(v){const d=v instanceof Date?v:new Date(v);return['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'][d.getDay()];}
 function season_(v){const d=v instanceof Date?v:new Date(v),m=d.getMonth()+1;return m===12||m<=2?'Zima':m<=5?'Wiosna':m<=8?'Lato':'Jesień';}
 function rate_(v){const n=Number(String(v==null?'':v).replace(',','.').replace('%','').trim());if(!Number.isFinite(n)||n<0)throw new Error('Wpisz prawidłową stawkę podatku.');const r=n>1?n/100:n;if(r>1)throw new Error('Stawka podatku nie może przekraczać 100%.');return r;}
