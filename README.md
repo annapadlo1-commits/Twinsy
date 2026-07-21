@@ -1,4 +1,4 @@
-# Vintage PRO 1.1.0 — większe wdrożenie
+# Vintage PRO 1.1.1 — poprawka szerokości i wydajności
 
 Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 
@@ -14,13 +14,13 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 8. Wybierz **Wdróż → Nowe wdrożenie → Aplikacja internetowa**. Uruchamianie: użytkownik korzystający z aplikacji. Dostęp: użytkownicy z kontem Google.
 9. Otwórz otrzymany link na telefonie i dodaj go do ekranu początkowego.
 
-## Aktualizacja z wersji 1.0.3
+## Aktualizacja z wersji 1.1.0
 
 1. W projekcie Apps Script zastąp zawartość `Code.gs` i `Mobile.html` plikami z paczki.
 2. Kliknij **Wdróż → Zarządzaj wdrożeniami**.
 3. Otwórz aktywne wdrożenie, kliknij ikonę ołówka i wybierz **Nowa wersja**.
 4. Kliknij **Wdróż**. Adres aplikacji zakończony `/exec` pozostaje ten sam.
-5. Odśwież arkusz, wybierz z menu **VINTAGE PRO → Przygotuj aktualizację 1.1.0** i zaakceptuj wykonanie.
+5. Odśwież arkusz, wybierz z menu **VINTAGE PRO → Przygotuj aktualizację 1.1.1** i zaakceptuj wykonanie.
 
 ## Zakres tego etapu
 
@@ -69,6 +69,12 @@ Pakiet jest przygotowany dla arkusza „Vintage PRO 1.0 — KOPIA ROBOCZA”.
 - wykrywanie brakujących i niezamkniętych raportów dziennych;
 - blokada sprzedaży, raportów i wydatków po zamknięciu miesiąca;
 - kreator aktualizacji oraz nowe pozycje menu arkusza.
+- szerokie, niezależne okno aplikacji na komputerze zamiast wąskiego panelu bocznego;
+- szerokość robocza do 1120 px i układ responsywny na telefonie;
+- pojedyncze otwarcie skoroszytu podczas jednego żądania;
+- pamięć podręczna dashboardu i analityki;
+- brak blokowania pozostałych funkcji podczas ładowania panelu;
+- komunikat diagnostyczny, jeśli odpowiedź przekroczy 45 sekund.
 
 Jeśli dokumenty wydatków mają trafiać do innego folderu niż zdjęcia produktów, dodaj w `12_USTAWIENIA` pozycję `FOLDER_DOKUMENTY_ID`. Gdy jej nie ma, aplikacja wykorzysta folder `FOLDER_ZDJĘCIA_ID`.
 

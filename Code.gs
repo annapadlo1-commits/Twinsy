@@ -1,15 +1,16 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '1.1.0'
+  VERSION: '1.1.1'
 });
+let VP_BOOK_;
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('VINTAGE PRO')
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj aktualizację 1.1.0', 'installVersion110')
+    .addItem('Przygotuj aktualizację 1.1.1', 'installVersion110')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -20,9 +21,8 @@ function doGet() {
 }
 
 function showApp() {
-  SpreadsheetApp.getUi().showSidebar(
-    HtmlService.createTemplateFromFile('Mobile').evaluate().setTitle('Vintage PRO')
-  );
+  const html=HtmlService.createTemplateFromFile('Mobile').evaluate().setTitle('Vintage PRO').setWidth(1180).setHeight(780);
+  SpreadsheetApp.getUi().showModelessDialog(html,'Vintage PRO');
 }
 
 function checkConfiguration() {
@@ -50,7 +50,9 @@ function installVersion110() {
 
 function getDashboardData(input) {
   assertAuthorized_(); input=input||{};
-  const range=reportRange_(input), sales=filteredSales_(range), expenses=filteredExpenses_(range), products=dataRows_(sheet_(VP.SHEETS.PRODUCTS),42).filter(r=>r[0]&&r[35]!==false);
+  const range=reportRange_(input), salesSheet=sheet_(VP.SHEETS.SALES), expenseSheet=sheet_(VP.SHEETS.EXPENSES), productSheet=sheet_(VP.SHEETS.PRODUCTS);
+  const cache=CacheService.getUserCache(), cacheKey=['DASH111',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
+  const sales=filteredSales_(range,salesSheet), expenses=filteredExpenses_(range,expenseSheet), products=dataRows_(productSheet,42).filter(r=>r[0]&&r[35]!==false);
   const revenue=round2_(sum_(sales,14)), discounts=round2_(sum_(sales,13)), confirmed=sales.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''), margin=round2_(sum_(confirmed,18));
   const expense=round2_(expenses.reduce((s,r)=>s+allocatedExpense_(r,range.store),0)), result=round2_(margin-expense);
   const storeRows=['TWINS PICK','VILANA VINTAGE'].filter(s=>range.store==='Oba sklepy'||range.store===s).map(store=>dashboardStore_(store,sales,expenses));
@@ -60,15 +62,16 @@ function getDashboardData(input) {
   const oldDays=Math.max(1,numberOrZero_(getSetting_('PRÓG_STAREGO_TOWARU_DNI'))||180), cutoff=new Date(); cutoff.setDate(cutoff.getDate()-oldDays);
   const oldStock=available.filter(r=>r[26] instanceof Date&&r[26]<cutoff).length;
   const highDiscount=Number(optionalNumber_(getSetting_('PRÓG_WYSOKIEGO_RABATU'))||0.2), highDiscountSales=sales.filter(r=>numberOrZero_(r[10])>0&&numberOrZero_(r[13])/numberOrZero_(r[10])>=highDiscount).length;
-  return {range,summary:{revenue,count:sales.length,average:sales.length?round2_(revenue/sales.length):0,discounts,margin,expenses:expense,result,confirmedShare:sales.length?confirmed.length/sales.length:1},stores:storeRows,
+  const resultData={range,summary:{revenue,count:sales.length,average:sales.length?round2_(revenue/sales.length):0,discounts,margin,expenses:expense,result,confirmedShare:sales.length?confirmed.length/sales.length:1},stores:storeRows,
     channels:groupMoney_(sales,8,14),payments:groupMoney_(sales,15,14),stock:{available:available.length,tagValue:round2_(sum_(available,17)),onFair:onFair.length,noPhoto,unknownCost,oldStock},
     alerts:[noPhoto?`${noPhoto} produktów bez zdjęcia`:'',unknownCost?`${unknownCost} dostępnych produktów bez potwierdzonego kosztu`:'',oldStock?`${oldStock} produktów na stanie dłużej niż ${oldDays} dni`:'',highDiscountSales?`${highDiscountSales} sprzedaży z wysokim rabatem`:''].filter(Boolean)};
+  const json=JSON.stringify(resultData); if(json.length<90000)cache.put(cacheKey,json,180); return resultData;
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_(); const range=reportRange_(input||{}), sales=filteredSales_(range);
+  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA111',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
   const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
-  return analysis;
+  const json=JSON.stringify(analysis); if(json.length<90000)cache.put(cacheKey,json,180); return analysis;
 }
 
 function saveTaxSettings(input) {
@@ -483,7 +486,8 @@ function nextProductId_(store, sh) {
 function appendLog_(user, channel, operation, object, id, before, after, comment) {
   sheet_(VP.SHEETS.LOG).appendRow([uniqueId_('LOG'),new Date(),user,channel,operation,object,id,before,after,comment,'OK','',VP.VERSION,'']);
 }
-function sheet_(name){ const sh=SpreadsheetApp.openById(VP.SPREADSHEET_ID).getSheetByName(name); if(!sh) throw new Error(`Brak zakładki ${name}.`); return sh; }
+function book_(){if(VP_BOOK_)return VP_BOOK_;const active=SpreadsheetApp.getActiveSpreadsheet();VP_BOOK_=active&&active.getId()===VP.SPREADSHEET_ID?active:SpreadsheetApp.openById(VP.SPREADSHEET_ID);return VP_BOOK_;}
+function sheet_(name){ const sh=book_().getSheetByName(name); if(!sh) throw new Error(`Brak zakładki ${name}.`); return sh; }
 function uniqueId_(prefix){ return `${prefix}-${Utilities.formatDate(new Date(),Session.getScriptTimeZone()||'Europe/Warsaw','yyyyMMdd-HHmmss')}-${Utilities.getUuid().slice(0,8)}`; }
 function clean_(v){ return String(v==null?'':v).trim(); }
 function normalize_(v){ return clean_(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' '); }
@@ -502,8 +506,8 @@ function monthKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v)
 function normalizePeriod_(v){ const s=clean_(v); const m=s.match(/^(\d{4})[-./](\d{1,2})$/); if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`; const d=new Date(v); if(!isNaN(d.getTime())) return monthKey_(d); throw new Error('Wybierz prawidłowy miesiąc rozliczeniowy.'); }
 function isMonthClosed_(period){period=normalizePeriod_(period);return dataRows_(sheet_(VP.SHEETS.FINANCE),20).some(r=>r[0]&&normalizePeriod_(r[0])===period&&r[19]==='Zamknięte');}
 function reportRange_(input){const end=input.dateTo?parseDate_(input.dateTo):parseDate_(dateKey_(new Date())),start=input.dateFrom?parseDate_(input.dateFrom):new Date(end.getFullYear(),end.getMonth(),1);if(start>end)throw new Error('Data od nie może być późniejsza niż data do.');return{dateFrom:dateKey_(start),dateTo:dateKey_(end),start,end,store:input.store||'Oba sklepy',channel:input.channel||'Wszystkie'};}
-function filteredSales_(range){return dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>{if(!r[0]||r[20]!=='Aktywna')return false;const d=r[2]||r[1];return dateKey_(d)>=range.dateFrom&&dateKey_(d)<=range.dateTo&&(range.store==='Oba sklepy'||r[3]===range.store)&&(range.channel==='Wszystkie'||r[8]===range.channel);});}
-function filteredExpenses_(range){return dataRows_(sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&dateKey_(r[1])>=range.dateFrom&&dateKey_(r[1])<=range.dateTo);}
+function filteredSales_(range,sh){return dataRows_(sh||sheet_(VP.SHEETS.SALES),25).filter(r=>{if(!r[0]||r[20]!=='Aktywna')return false;const d=r[2]||r[1];return dateKey_(d)>=range.dateFrom&&dateKey_(d)<=range.dateTo&&(range.store==='Oba sklepy'||r[3]===range.store)&&(range.channel==='Wszystkie'||r[8]===range.channel);});}
+function filteredExpenses_(range,sh){return dataRows_(sh||sheet_(VP.SHEETS.EXPENSES),30).filter(r=>r[0]&&dateKey_(r[1])>=range.dateFrom&&dateKey_(r[1])<=range.dateTo);}
 function allocatedExpense_(r,store){if(store==='TWINS PICK')return numberOrZero_(r[14]);if(store==='VILANA VINTAGE')return numberOrZero_(r[15]);return numberOrZero_(r[14])+numberOrZero_(r[15]);}
 function dashboardStore_(store,sales,expenses){const ss=sales.filter(r=>r[3]===store),known=ss.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''),col=store==='TWINS PICK'?14:15,revenue=round2_(sum_(ss,14)),expense=round2_(expenses.reduce((s,r)=>s+numberOrZero_(r[col]),0)),margin=round2_(sum_(known,18));return{store,revenue,count:ss.length,average:ss.length?round2_(revenue/ss.length):0,discounts:round2_(sum_(ss,13)),margin,expenses:expense,result:round2_(margin-expense),confirmedShare:ss.length?known.length/ss.length:1};}
 function sum_(rows,col){return rows.reduce((s,r)=>s+numberOrZero_(r[col]),0);}
