@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.1'
+  VERSION: '2.0.2'
 });
 let VP_BOOK_;
 
@@ -11,7 +11,7 @@ function onOpen() {
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.1', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.2', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -73,8 +73,8 @@ function installFinalVersion() {
 function getDashboardData(input) {
   assertAuthorized_(); input=input||{};
   const range=reportRange_(input), salesSheet=sheet_(VP.SHEETS.SALES), expenseSheet=sheet_(VP.SHEETS.EXPENSES), productSheet=sheet_(VP.SHEETS.PRODUCTS);
-  const cache=CacheService.getUserCache(), cacheKey=['DASH200',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
-  const sales=filteredSales_(range,salesSheet), expenses=filteredExpenses_(range,expenseSheet), products=dataRows_(productSheet,42).filter(r=>r[0]&&r[35]!==false);
+  const cache=CacheService.getDocumentCache(), cacheKey=['DASH202',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),expenseSheet.getLastRow(),productSheet.getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached);
+  const sales=filteredSales_(range,salesSheet), expenses=filteredExpenses_(range,expenseSheet), products=dataRows_(productSheet,38).filter(r=>r[0]&&r[35]!==false);
   const revenue=round2_(sum_(sales,14)), discounts=round2_(sum_(sales,13)), confirmed=sales.filter(r=>r[17]==='Potwierdzony'&&r[18]!==''), margin=round2_(sum_(confirmed,18));
   const expense=round2_(expenses.reduce((s,r)=>s+allocatedExpense_(r,range.store),0)), result=round2_(margin-expense);
   const storeRows=['TWINS PICK','VILANA VINTAGE'].filter(s=>range.store==='Oba sklepy'||range.store===s).map(store=>dashboardStore_(store,sales,expenses));
@@ -87,11 +87,11 @@ function getDashboardData(input) {
   const units=sales.reduce((s,r)=>s+saleUnits_(r),0),confirmedUnits=confirmed.reduce((s,r)=>s+saleUnits_(r),0),resultData={range,summary:{revenue,count:units,average:units>0?round2_(revenue/units):0,discounts,margin,expenses:expense,result,confirmedShare:units>0?Math.max(0,Math.min(1,confirmedUnits/units)):1},stores:storeRows,
     channels:groupMoney_(sales,8,14),payments:groupMoney_(sales,15,14),stock:{available:available.length,tagValue:round2_(sum_(available,17)),onFair:onFair.length,noPhoto,unknownCost,oldStock},
     alerts:[noPhoto?`${noPhoto} produktów bez zdjęcia`:'',unknownCost?`${unknownCost} dostępnych produktów bez potwierdzonego kosztu`:'',oldStock?`${oldStock} produktów na stanie dłużej niż ${oldDays} dni`:'',highDiscountSales?`${highDiscountSales} sprzedaży z wysokim rabatem`:''].filter(Boolean)};
-  const json=JSON.stringify(resultData); if(json.length<90000)cache.put(cacheKey,json,180); return resultData;
+  const json=JSON.stringify(resultData); if(json.length<90000)cache.put(cacheKey,json,600); return resultData;
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getUserCache(), cacheKey=['ANA200',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow(),sheet_(VP.SHEETS.LOG).getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
+  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getDocumentCache(), cacheKey=['ANA202',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
   const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
   const json=JSON.stringify(analysis); if(json.length<90000)cache.put(cacheKey,json,180); return analysis;
 }
@@ -495,7 +495,7 @@ function importLegacySales() {
         });
       }
     });
-    appendRows_(productsSh,productRows,42);appendRows_(salesSh,saleRows,25);const dailySh=sheet_(VP.SHEETS.DAILY),existingDaily=dataRows_(dailySh,19),dailyRows=[];Object.keys(daily).forEach(day=>{if(existingDaily.some(r=>r[0]&&dateKey_(r[1])===day&&r[2]==='Oba sklepy'))return;const d=daily[day];dailyRows.push([uniqueId_('DAY'),d.date,'Oba sklepy',round2_(d.total),round2_(d.cash),round2_(d.card),round2_(d.other),round2_(d.total),round2_(d.card),round2_(d.cash),0,0,0,'Zgodny','Automatyczny raport z importu historycznego',user,now,now,true]);});appendRows_(dailySh,dailyRows,19);periods.forEach(p=>refreshMonthlyFinance_(p));appendLog_(user,'arkusz','IMPORT_HISTORII_SPRZEDAŻY','import','legacy-sales','',JSON.stringify({sales:saleRows.length,products:productRows.length,reports:dailyRows.length}),'');return{ok:true,message:`Zaimportowano ${saleRows.length} sprzedaży, ${productRows.length} kart produktów i ${dailyRows.length} raportów archiwalnych.`};
+    appendRows_(productsSh,productRows,42);appendRows_(salesSh,saleRows,25);const dailySh=sheet_(VP.SHEETS.DAILY),existingDaily=dataRows_(dailySh,19),dailyRows=[];Object.keys(daily).forEach(day=>{if(existingDaily.some(r=>r[0]&&dateKey_(r[1])===day&&r[2]==='Oba sklepy'))return;const d=daily[day];dailyRows.push([uniqueId_('DAY'),d.date,'Oba sklepy',round2_(d.total),round2_(d.cash),round2_(d.card),round2_(d.other),round2_(d.total),round2_(d.card),round2_(d.cash),0,0,0,'Zgodny','Automatyczny raport z importu historycznego',user,now,now,true]);});appendRows_(dailySh,dailyRows,19);appendLog_(user,'arkusz','IMPORT_HISTORII_SPRZEDAŻY','import','legacy-sales','',JSON.stringify({sales:saleRows.length,products:productRows.length,reports:dailyRows.length,periods:[...periods]}),'Podsumowania miesięczne przeliczą się przy otwarciu Finansów');return{ok:true,message:`Zaimportowano ${saleRows.length} sprzedaży, ${productRows.length} kart produktów i ${dailyRows.length} raportów archiwalnych. Panel jest gotowy do odświeżenia.`};
   }finally{lock.releaseLock();}
 }
 
@@ -529,7 +529,7 @@ function appendRows_(sh,rows,width){if(!rows.length)return;sh.getRange(sh.getLas
 function duplicateCount_(values){const seen=new Set();let n=0;values.forEach(v=>{if(seen.has(v))n++;else seen.add(v);});return n;}
 function normalizePayment_(v){const n=normalize_(v);if(n.includes('got'))return'Gotówka';if(n.includes('kart')||n.includes('terminal'))return'Karta';if(n.includes('blik'))return'BLIK';if(n.includes('przelew'))return'Przelew';return'Inna';}
 function inferCategory_(name){const n=normalize_(name),rules=[['Sukienki',['sukien']],['Biżuteria',['naszyj','kolczy','branso','pierscion','bizuter']],['Spodnie',['spodni','jeans']],['Spódnice',['spodnic']],['Koszule i bluzki',['koszul','bluzk']],['Kurtki i płaszcze',['kurtk','plaszcz']],['Swetry',['swetr','kardigan']],['Torebki',['toreb']],['Buty',['but','kozaki','sandaly']],['Akcesoria',['pasek','apaszk','szal','czapk']]];const hit=rules.find(x=>x[1].some(k=>n.includes(k)));return hit?hit[0]:'Inne';}
-function legacyProductRow_(id,store,name,category,price,date,saleId,user,now,source){return[id,store,name,'',category,'','','','','','','','Vintage / nieustalony',false,'','',false,price,'','Nieznany','','','',store,'','Sprzedany w sklepie',date,date,saleId,`Import historyczny: ${source}`,false,user,now,user,now,'','','','','','','Brak zdjęcia'];}
+function legacyProductRow_(id,store,name,category,price,date,saleId,user,now,source){return[id,store,name,'',category,'','','','','','','','',false,'','',false,price,'','Nieznany','','','',store,'','Sprzedany w sklepie',date,date,saleId,`Import historyczny: ${source}`,false,user,now,user,now,'','','','','','','Brak zdjęcia'];}
 function polishMonth_(v){const n=normalize_(v),months=['styczen','luty','marzec','kwiecien','maj','czerwiec','lipiec','sierpien','wrzesien','pazdziernik','listopad','grudzien'];const i=months.findIndex(m=>n.startsWith(m));return i<0?0:i+1;}
 function normalizePayer_(v){const n=normalize_(v);if(n.includes('lana'))return'Lana';if(n.includes('twin'))return'Twinsy';return'Inne';}
 function inferExpenseCategory_(v){const n=normalize_(v);if(n.includes('czynsz'))return'Czynsz';if(n.includes('prad')||n.includes('energia')||n.includes('media')||n.includes('internet'))return'Media';if(n.includes('podatek'))return'Podatki';if(n.includes('towar'))return'Zakup towaru';if(n.includes('targ'))return'Targi';if(n.includes('reklam')||n.includes('marketing'))return'Marketing';return'Inne';}

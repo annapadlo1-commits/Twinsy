@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.2
+
+Naprawiono import produktów historycznych blokowany przez walidację kolumny stanu. Usunięto wielokrotne, kosztowne przeliczanie miesięcy podczas importu. Dashboard i analityka używają lżejszego odczytu, wspólnej pamięci podręcznej i nie zależą już od rozmiaru dziennika operacji.
+
 ## 2.0.1
 
 Naprawiono zapisywanie do niewłaściwej kopii arkusza: aplikacja automatycznie wiąże bazę z arkuszem, z którego uruchomiono instalator. Backup używa tego samego powiązania, diagnostyka pokazuje nazwę i ID bazy, a import rozpoznaje także kwoty zapisane tekstowo z przecinkiem lub symbolem zł.
