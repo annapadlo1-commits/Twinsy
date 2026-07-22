@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.4'
+  VERSION: '2.0.5'
 });
 let VP_BOOK_;
 
@@ -9,9 +9,10 @@ function onOpen() {
   bindDatabase_();
   SpreadsheetApp.getUi().createMenu('VINTAGE PRO')
     .addItem('Otwórz panel', 'showApp')
+    .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.4', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.5', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -25,6 +26,8 @@ function showApp() {
   const html=HtmlService.createTemplateFromFile('Mobile').evaluate().setTitle('Vintage PRO').setWidth(1180).setHeight(780);
   SpreadsheetApp.getUi().showModelessDialog(html,'Vintage PRO');
 }
+
+function showMobileAppUrl(){const url=ScriptApp.getService().getUrl();if(!url){SpreadsheetApp.getUi().alert('Vintage PRO','Nie ma aktywnego wdrożenia typu „Aplikacja internetowa”. Utwórz je przez Wdróż → Nowe wdrożenie.',SpreadsheetApp.getUi().ButtonSet.OK);return;}SpreadsheetApp.getUi().alert('Link aplikacji mobilnej',`${url}\n\nSkopiuj dokładnie ten adres. Powinien kończyć się /exec.`,SpreadsheetApp.getUi().ButtonSet.OK);}
 
 function checkConfiguration() {
   const result = getBootstrapData();
@@ -538,7 +541,8 @@ function appendRows_(sh,rows,width){
     return null;
   };
   const safe=rows.map((row,r)=>row.map((value,col)=>{const list=allowedFor(rules[r][col]);if(!list||value===''||value===null)return value;return list.includes(normalize_(value))?value:'';}));
-  target.setValues(safe);
+  target.clearDataValidations();
+  try{target.setValues(safe);}finally{target.setDataValidations(rules);}
 }
 function duplicateCount_(values){const seen=new Set();let n=0;values.forEach(v=>{if(seen.has(v))n++;else seen.add(v);});return n;}
 function normalizePayment_(v){const n=normalize_(v);if(n.includes('got'))return'Gotówka';if(n.includes('kart')||n.includes('terminal'))return'Karta';if(n.includes('blik'))return'BLIK';if(n.includes('przelew'))return'Przelew';return'Inna';}

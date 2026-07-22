@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.5
+
+Importer tymczasowo zdejmuje walidację wyłącznie z docelowej partii, zapisuje sprawdzone dane i natychmiast przywraca reguły, co eliminuje blokady typu E5920. Menu arkusza pokazuje właściwy adres wdrożenia mobilnego zakończony `/exec`.
+
 ## 2.0.4
 
 Import sprzedaży działa automatycznie w partiach po 100 rekordów, pokazuje postęp i wznawia się bez duplikatów. Każda komórka partii jest sprawdzana według własnej reguły walidacyjnej. Raporty archiwalne są budowane dopiero po zakończeniu wszystkich partii, dzięki czemu zachowują pełne sumy dzienne.
