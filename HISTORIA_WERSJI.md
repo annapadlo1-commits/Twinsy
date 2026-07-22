@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.4
+
+Import sprzedaży działa automatycznie w partiach po 100 rekordów, pokazuje postęp i wznawia się bez duplikatów. Każda komórka partii jest sprawdzana według własnej reguły walidacyjnej. Raporty archiwalne są budowane dopiero po zakończeniu wszystkich partii, dzięki czemu zachowują pełne sumy dzienne.
+
 ## 2.0.3
 
 Importer sprawdza przed zapisem wszystkie listy walidacyjne arkusza. Wartość historyczna, której nie można jednoznacznie dopasować do aktualnego słownika, pozostaje pusta zamiast zatrzymywać cały import błędem komórki.

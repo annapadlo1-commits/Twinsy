@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.3'
+  VERSION: '2.0.4'
 });
 let VP_BOOK_;
 
@@ -11,7 +11,7 @@ function onOpen() {
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.3', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.4', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -479,24 +479,28 @@ function previewLegacySales() {
 }
 
 function importLegacySales() {
-  const user=assertAuthorized_();assertRecentBackup_();const lock=LockService.getDocumentLock();lock.waitLock(30000);try{const ss=book_(),salesSh=sheet_(VP.SHEETS.SALES),productsSh=sheet_(VP.SHEETS.PRODUCTS),existingSales=new Set(dataRows_(salesSh,25).map(r=>String(r[0]))),productIds=dataRows_(productsSh,42).map(r=>String(r[0])),counters={TP:maxNumericId_(productIds,'TP'),VV:maxNumericId_(productIds,'VV')},productRows=[],saleRows=[],daily={},periods=new Set(),now=new Date();
+  const user=assertAuthorized_();assertRecentBackup_();const lock=LockService.getDocumentLock();lock.waitLock(30000);try{const ss=book_(),salesSh=sheet_(VP.SHEETS.SALES),productsSh=sheet_(VP.SHEETS.PRODUCTS),existingSales=new Set(dataRows_(salesSh,25).map(r=>String(r[0]))),productIds=dataRows_(productsSh,42).map(r=>String(r[0])),counters={TP:maxNumericId_(productIds,'TP'),VV:maxNumericId_(productIds,'VV')},productRows=[],saleRows=[],periods=new Set(),now=new Date(),limit=100;
     ss.getSheets().filter(sh=>/^Sprzedaż\s+(?!wzór)/i.test(sh.getName())).forEach(sh=>{
       const rows=sh.getDataRange().getValues();let lastDate=null;
       for(let i=2;i<rows.length;i++){
         const r=rows[i];if(r[0])lastDate=validDate_(r[0]);
         [['TP','TWINS PICK',1,2,3],['VV','VILANA VINTAGE',4,5,6]].forEach(x=>{
-          const name=clean_(r[x[2]]),price=legacyAmount_(r[x[3]]);if(!name)return;
+          if(saleRows.length>=limit)return;const name=clean_(r[x[2]]),price=legacyAmount_(r[x[3]]);if(!name)return;
           const saleId=`LEGSALE-${sh.getSheetId()}-${i+1}-${x[0]}`;if(existingSales.has(saleId)||!lastDate||price===null)return;
           const productId=`${x[0]}-${String(++counters[x[0]]).padStart(6,'0')}`,category=inferCategory_(name),payment=normalizePayment_(r[x[4]]),source=`${sh.getName()} · wiersz ${i+1}`;
           productRows.push(legacyProductRow_(productId,x[1],name,category,price,lastDate,saleId,user,now,source));
           saleRows.push([saleId,lastDate,lastDate,x[1],productId,name,'',category,'Sklep stacjonarny','',price,'Brak','',0,price,payment,'','Nieznany','',`Import historyczny: ${source}`,'Aktywna',user,now,'','']);
-          existingSales.add(saleId);const day=dateKey_(lastDate);daily[day]=daily[day]||{date:lastDate,total:0,cash:0,card:0,other:0};daily[day].total+=price;
-          if(payment==='Gotówka')daily[day].cash+=price;else if(payment==='Karta')daily[day].card+=price;else daily[day].other+=price;periods.add(monthKey_(lastDate));
+          existingSales.add(saleId);periods.add(monthKey_(lastDate));
         });
       }
     });
-    appendRows_(productsSh,productRows,42);appendRows_(salesSh,saleRows,25);const dailySh=sheet_(VP.SHEETS.DAILY),existingDaily=dataRows_(dailySh,19),dailyRows=[];Object.keys(daily).forEach(day=>{if(existingDaily.some(r=>r[0]&&dateKey_(r[1])===day&&r[2]==='Oba sklepy'))return;const d=daily[day];dailyRows.push([uniqueId_('DAY'),d.date,'Oba sklepy',round2_(d.total),round2_(d.cash),round2_(d.card),round2_(d.other),round2_(d.total),round2_(d.card),round2_(d.cash),0,0,0,'Zgodny','Automatyczny raport z importu historycznego',user,now,now,true]);});appendRows_(dailySh,dailyRows,19);appendLog_(user,'arkusz','IMPORT_HISTORII_SPRZEDAŻY','import','legacy-sales','',JSON.stringify({sales:saleRows.length,products:productRows.length,reports:dailyRows.length,periods:[...periods]}),'Podsumowania miesięczne przeliczą się przy otwarciu Finansów');return{ok:true,message:`Zaimportowano ${saleRows.length} sprzedaży, ${productRows.length} kart produktów i ${dailyRows.length} raportów archiwalnych. Panel jest gotowy do odświeżenia.`};
+    appendRows_(productsSh,productRows,42);appendRows_(salesSh,saleRows,25);SpreadsheetApp.flush();const remaining=previewLegacySales().total,done=remaining===0,reports=done?rebuildLegacyDailyReports_(user):0;appendLog_(user,'arkusz','IMPORT_HISTORII_SPRZEDAŻY_PARTIA','import','legacy-sales','',JSON.stringify({sales:saleRows.length,products:productRows.length,remaining,periods:[...periods]}),'Import partiami');return{ok:true,batch:saleRows.length,remaining,done,message:done?`Import zakończony. Ostatnia partia: ${saleRows.length}; raporty archiwalne: ${reports}.`:`Zaimportowano partię ${saleRows.length} rekordów. Pozostało około ${remaining}.`};
   }finally{lock.releaseLock();}
+}
+
+function rebuildLegacyDailyReports_(user){
+  const rows=dataRows_(sheet_(VP.SHEETS.SALES),25).filter(r=>String(r[0]).startsWith('LEGSALE-')&&r[20]!=='Anulowana'),daily={};rows.forEach(r=>{const day=dateKey_(r[2]||r[1]),payment=r[15],price=numberOrZero_(r[14]);if(!day)return;daily[day]=daily[day]||{date:r[2]||r[1],total:0,cash:0,card:0,other:0};daily[day].total+=price;if(payment==='Gotówka')daily[day].cash+=price;else if(payment==='Karta')daily[day].card+=price;else daily[day].other+=price;});
+  const sh=sheet_(VP.SHEETS.DAILY),existing=dataRows_(sh,19),now=new Date(),append=[];Object.keys(daily).forEach(day=>{const d=daily[day],row=[uniqueId_('DAY'),d.date,'Oba sklepy',round2_(d.total),round2_(d.cash),round2_(d.card),round2_(d.other),round2_(d.total),round2_(d.card),round2_(d.cash),0,0,0,'Zgodny','Automatyczny raport z importu historycznego',user,now,now,true],i=existing.findIndex(r=>r[0]&&dateKey_(r[1])===day&&r[2]==='Oba sklepy'&&String(r[14]).includes('importu historycznego'));if(i>=0){row[0]=existing[i][0];sh.getRange(i+2,1,1,19).setValues([row]);}else append.push(row);});appendRows_(sh,append,19);return Object.keys(daily).length;
 }
 
 function previewLegacyExpenses() {
@@ -527,13 +531,13 @@ function legacyAmount_(v){if(v===null||v===''||typeof v==='undefined')return nul
 function maxNumericId_(ids,prefix){return ids.reduce((m,id)=>{const x=String(id).match(new RegExp(`^${prefix}-(\\d+)$`));return x?Math.max(m,Number(x[1])):m;},0);}
 function appendRows_(sh,rows,width){
   if(!rows.length)return;
-  const start=sh.getLastRow()+1,target=sh.getRange(start,1,rows.length,width),rules=sh.getRange(start,1,1,width).getDataValidations()[0],allowed=rules.map(rule=>{
-    if(!rule)return null;const type=rule.getCriteriaType(),values=rule.getCriteriaValues();
-    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST)return(values[0]||[]).map(normalize_);
-    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE)return values[0].getDisplayValues().flat().filter(Boolean).map(normalize_);
+  const start=sh.getLastRow()+1,target=sh.getRange(start,1,rows.length,width),rules=target.getDataValidations(),cache=new Map(),allowedFor=rule=>{
+    if(!rule)return null;const type=rule.getCriteriaType(),values=rule.getCriteriaValues();let key,list;
+    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST){key=`L:${JSON.stringify(values[0]||[])}`;if(cache.has(key))return cache.get(key);list=(values[0]||[]).map(normalize_);cache.set(key,list);return list;}
+    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE){const range=values[0];key=`R:${range.getSheet().getSheetId()}:${range.getA1Notation()}`;if(cache.has(key))return cache.get(key);list=range.getDisplayValues().flat().filter(Boolean).map(normalize_);cache.set(key,list);return list;}
     return null;
-  });
-  const safe=rows.map(row=>row.map((value,col)=>{const list=allowed[col];if(!list||value===''||value===null)return value;return list.includes(normalize_(value))?value:'';}));
+  };
+  const safe=rows.map((row,r)=>row.map((value,col)=>{const list=allowedFor(rules[r][col]);if(!list||value===''||value===null)return value;return list.includes(normalize_(value))?value:'';}));
   target.setValues(safe);
 }
 function duplicateCount_(values){const seen=new Set();let n=0;values.forEach(v=>{if(seen.has(v))n++;else seen.add(v);});return n;}
