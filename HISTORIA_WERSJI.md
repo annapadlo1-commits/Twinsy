@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.1.0
+
+Duża paczka analityczna: responsywny wykres trendu dziennego, miarodajna średnia dla każdego dnia tygodnia, porównanie sklepów, kanałów i płatności, analiza rabatów, wieku magazynu, miesięcy i pór roku. Zakładka `10_ANALITYKA` otrzymuje tabele pomocnicze i natywne wykresy Google Sheets.
+
 ## 2.0.9
 
 Autoryzacja prywatnych kont Gmail korzysta z aktywnego użytkownika, a gdy Google nie udostępnia tej wartości — z użytkownika wykonującego skrypt. Adres nadal musi znajdować się na aktywnej liście `13_UŻYTKOWNICY` z dostępem mobilnym.
@@ -51,3 +55,8 @@ Dashboard, analityka, zamknięcie miesiąca, szeroki panel i optymalizacja wydaj
 ## 1.0.x
 
 Produkty, sprzedaż, zdjęcia, raporty dobowe, targi, wydatki i rozliczenia.
+# 2.1.1
+
+- miniatury zdjęć w Magazynie i wynikach wyszukiwania produktów,
+- duży podgląd i link do oryginału w szczegółach produktu,
+- obsługa braku zdjęcia oraz niedostępnego podglądu.

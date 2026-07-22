@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.9'
+  VERSION: '2.1.1'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.9', 'installFinalVersion')
+    .addItem('Przygotuj paczkę 2.1.1 — miniatury zdjęć', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -94,11 +94,11 @@ function getDashboardData(input) {
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_();const range=reportRange_(input||{}),sh=sheet_(VP.SHEETS.SALES),last=sh.getLastRow(),cache=CacheService.getDocumentCache(),cacheKey=['ANA207',range.dateFrom,range.dateTo,range.store,range.channel,last].join('|'),cached=cache.get(cacheKey);if(cached)return JSON.parse(cached);
-  const rows=last<2?[]:sh.getRange(2,1,last-1,25).getValues(),start=range.start.getTime(),end=range.end.getTime()+86399999,maps={categories:{},products:{},brands:{},days:{},weekdays:{},months:{},seasons:{},channels:{},payments:{},fairs:{}},weekdayNames=['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];let total=0;
+  assertAuthorized_();const range=reportRange_(input||{}),sh=sheet_(VP.SHEETS.SALES),last=sh.getLastRow(),ps=sheet_(VP.SHEETS.PRODUCTS),cache=CacheService.getDocumentCache(),cacheKey=['ANA210',range.dateFrom,range.dateTo,range.store,range.channel,last,ps.getLastRow()].join('|'),cached=cache.get(cacheKey);if(cached)return JSON.parse(cached);
+  const rows=last<2?[]:sh.getRange(2,1,last-1,25).getValues(),start=range.start.getTime(),end=range.end.getTime()+86399999,maps={categories:{},products:{},brands:{},days:{},weekdays:{},months:{},seasons:{},channels:{},payments:{},fairs:{},stores:{},discounts:{}},weekdayNames=['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];let total=0,revenue=0,discounts=0;
   const add=(map,label,r)=>{label=clean_(label);if(!label)return;const x=map[label]||(map[label]={label,count:0,revenue:0,discount:0});x.count+=saleUnits_(r);x.revenue+=numberOrZero_(r[14]);x.discount+=numberOrZero_(r[13]);};
-  rows.forEach(r=>{if(!r[0]||r[20]==='Anulowana')return;const d=r[2]||r[1],date=d instanceof Date?d:new Date(d);if(isNaN(date.getTime())||date.getTime()<start||date.getTime()>end)return;if(range.store!=='Oba sklepy'&&r[3]!==range.store)return;if(range.channel!=='Wszystkie'&&r[8]!==range.channel)return;total+=saleUnits_(r);const day=localDateKey_(date),month=day.slice(0,7),m=date.getMonth()+1,season=m===12||m<=2?'Zima':m<=5?'Wiosna':m<=8?'Lato':'Jesień';add(maps.categories,r[7],r);add(maps.products,r[5],r);add(maps.brands,r[6],r);add(maps.days,day,r);add(maps.weekdays,weekdayNames[date.getDay()],r);add(maps.months,month,r);add(maps.seasons,season,r);add(maps.channels,r[8],r);add(maps.payments,r[15],r);add(maps.fairs,r[9],r);});
-  const finish=(map,max)=>Object.values(map).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count>0?round2_(x.revenue/x.count):0,discount:round2_(x.discount)})).sort((a,b)=>b.revenue-a.revenue||b.count-a.count).slice(0,max),publicRange={dateFrom:range.dateFrom,dateTo:range.dateTo,store:range.store,channel:range.channel},analysis={range:publicRange,total,topCategories:finish(maps.categories,10),topProducts:finish(maps.products,10),topBrands:finish(maps.brands,10),days:finish(maps.days,20),weekdays:finish(maps.weekdays,7),months:finish(maps.months,24),seasons:finish(maps.seasons,4),channels:finish(maps.channels,10),payments:finish(maps.payments,10),fairs:finish(maps.fairs,20)};
+  rows.forEach(r=>{if(!r[0]||r[20]==='Anulowana')return;const d=r[2]||r[1],date=d instanceof Date?d:new Date(d);if(isNaN(date.getTime())||date.getTime()<start||date.getTime()>end)return;if(range.store!=='Oba sklepy'&&r[3]!==range.store)return;if(range.channel!=='Wszystkie'&&r[8]!==range.channel)return;const units=saleUnits_(r),price=numberOrZero_(r[14]),disc=numberOrZero_(r[13]);total+=units;revenue+=price;discounts+=disc;const day=localDateKey_(date),month=day.slice(0,7),m=date.getMonth()+1,season=m===12||m<=2?'Zima':m<=5?'Wiosna':m<=8?'Lato':'Jesień',pct=numberOrZero_(r[10])?disc/numberOrZero_(r[10]):0,bucket=pct<=0?'Bez rabatu':pct<=.10?'Do 10%':pct<=.15?'11–15%':pct<=.20?'16–20%':'Powyżej 20%';add(maps.categories,r[7],r);add(maps.products,r[5],r);add(maps.brands,r[6],r);add(maps.days,day,r);add(maps.weekdays,weekdayNames[date.getDay()],r);add(maps.months,month,r);add(maps.seasons,season,r);add(maps.channels,r[8],r);add(maps.payments,r[15],r);add(maps.fairs,r[9],r);add(maps.stores,r[3],r);add(maps.discounts,bucket,r);});
+  const finish=(map,max,sort=true)=>{const out=Object.values(map).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count>0?round2_(x.revenue/x.count):0,discount:round2_(x.discount)}));if(sort)out.sort((a,b)=>b.revenue-a.revenue||b.count-a.count);return out.slice(0,max);},dayCounts={};for(let d=new Date(range.start);d<=range.end;d.setDate(d.getDate()+1)){const n=weekdayNames[d.getDay()];dayCounts[n]=(dayCounts[n]||0)+1;}const weekdayPerformance=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'].map(label=>{const x=maps.weekdays[label]||{count:0,revenue:0,discount:0};return{label,count:x.count,revenue:round2_(x.revenue),occurrences:dayCounts[label]||0,sellingDays:Object.keys(maps.days).filter(day=>weekdayNames[new Date(`${day}T12:00:00`).getDay()]===label).length,averageCalendarDay:dayCounts[label]?round2_(x.revenue/dayCounts[label]):0,averageSale:x.count?round2_(x.revenue/x.count):0};}),productRows=dataRows_(ps,28).filter(r=>r[0]&&(range.store==='Oba sklepy'||r[1]===range.store)&&['Dostępny','Na targach','Zarezerwowany'].includes(r[25])),now=new Date(),aging={'0–30 dni':0,'31–90 dni':0,'91–180 dni':0,'Powyżej 180 dni':0,'Brak daty':0};productRows.forEach(r=>{if(!(r[26] instanceof Date)){aging['Brak daty']++;return;}const days=Math.floor((now-r[26])/86400000);aging[days<=30?'0–30 dni':days<=90?'31–90 dni':days<=180?'91–180 dni':'Powyżej 180 dni']++;});const publicRange={dateFrom:range.dateFrom,dateTo:range.dateTo,store:range.store,channel:range.channel},analysis={range:publicRange,total,summary:{revenue:round2_(revenue),count:total,average:total?round2_(revenue/total):0,discounts:round2_(discounts),discountShare:revenue+discounts?discounts/(revenue+discounts):0},topCategories:finish(maps.categories,10),topProducts:finish(maps.products,10),topBrands:finish(maps.brands,10),days:finish(maps.days,366),dailyTrend:finish(maps.days,366,false).sort((a,b)=>a.label.localeCompare(b.label)),weekdays:finish(maps.weekdays,7),weekdayPerformance,months:finish(maps.months,24,false).sort((a,b)=>a.label.localeCompare(b.label)),seasons:finish(maps.seasons,4),channels:finish(maps.channels,10),payments:finish(maps.payments,10),fairs:finish(maps.fairs,20),stores:finish(maps.stores,2),discountBuckets:finish(maps.discounts,5,false),stockAging:Object.keys(aging).map(label=>({label,count:aging[label]}))};
   const json=JSON.stringify(analysis);if(json.length<90000)cache.put(cacheKey,json,600);return analysis;
 }
 
@@ -127,11 +127,15 @@ function closeMonth(period) {
 
 function refreshAnalyticsSheet(input) {
   const user=assertAuthorized_(), end=new Date(), start=new Date(end.getFullYear(),end.getMonth()-11,1), data=getAnalyticsData(input||{dateFrom:dateKey_(start),dateTo:dateKey_(end),store:'Oba sklepy'}), sh=sheet_(VP.SHEETS.ANALYTICS||'10_ANALITYKA');
-  sh.getRange(1,1,100,20).clearContent();
+  sh.getCharts().forEach(c=>sh.removeChart(c));if(sh.getMaxRows()<250)sh.insertRowsAfter(sh.getMaxRows(),250-sh.getMaxRows());if(sh.getMaxColumns()<20)sh.insertColumnsAfter(sh.getMaxColumns(),20-sh.getMaxColumns());sh.getRange(1,1,250,20).clearContent();
   sh.getRange('A1:T1').breakApart().merge().setValue(`VINTAGE PRO — ANALITYKA · ${data.range.dateFrom}–${data.range.dateTo}`).setFontWeight('bold').setBackground('#eadde4');
+  sh.getRange('A2:H2').setValues([['Przychód',data.summary.revenue,'Sprzedaż',data.summary.count,'Średnia',data.summary.average,'Rabaty',data.summary.discounts]]).setFontWeight('bold');sh.getRangeList(['B2','F2','H2']).setNumberFormat('#,##0.00 "zł"');sh.getRange('D2').setNumberFormat('#,##0');
   writeRanking_(sh,3,1,'NAJLEPSZE KATEGORIE',data.topCategories); writeRanking_(sh,3,6,'NAJLEPSZE NAZWY PRODUKTÓW',data.topProducts); writeRanking_(sh,3,11,'NAJLEPSZE MARKI',data.topBrands); writeRanking_(sh,3,16,'DNI TYGODNIA',data.weekdays);
   writeRanking_(sh,20,1,'NAJLEPSZE DNI',data.days); writeRanking_(sh,20,6,'MIESIĄCE',data.months); writeRanking_(sh,20,11,'PORY ROKU',data.seasons); writeRanking_(sh,20,16,'KANAŁY',data.channels);
-  sh.autoResizeColumns(1,20); appendLog_(user,'arkusz','ODŚWIEŻ_ANALITYKĘ','arkusz','10_ANALITYKA','',JSON.stringify(data.range),''); return {ok:true,message:'Analityka została odświeżona.',data};
+  const base=50;sh.getRange(base,1,1,5).setValues([['Dzień tygodnia','Przychód','Liczba','Liczba dni','Średnia / dzień']]).setFontWeight('bold').setBackground('#eadde4');sh.getRange(base+1,1,7,5).setValues(data.weekdayPerformance.map(x=>[x.label,x.revenue,x.count,x.occurrences,x.averageCalendarDay]));sh.getRange(base+1,2,7,1).setNumberFormat('#,##0.00 "zł"');sh.getRange(base+1,5,7,1).setNumberFormat('#,##0.00 "zł"');
+  const trendStart=60,trend=data.dailyTrend.slice(-180);sh.getRange(trendStart,1,1,3).setValues([['Data','Przychód','Liczba']]).setFontWeight('bold').setBackground('#eadde4');if(trend.length)sh.getRange(trendStart+1,1,trend.length,3).setValues(trend.map(x=>[x.label,x.revenue,x.count]));
+  const chart1=sh.newChart().asColumnChart().addRange(sh.getRange(base,1,8,5)).setPosition(base,7,0,0).setOption('title','Średni przychód według dnia tygodnia').setOption('legend',{position:'bottom'}).build();sh.insertChart(chart1);if(trend.length){const chart2=sh.newChart().asLineChart().addRange(sh.getRange(trendStart,1,trend.length+1,2)).setPosition(trendStart,7,0,0).setOption('title','Trend sprzedaży dziennej').setOption('legend',{position:'none'}).build();sh.insertChart(chart2);}
+  sh.autoResizeColumns(1,20); appendLog_(user,'arkusz','ODŚWIEŻ_ANALITYKĘ','arkusz','10_ANALITYKA','',JSON.stringify(data.range),'Wykresy 2.1.0'); return {ok:true,message:'Analityka i wykresy zostały odświeżone.',data};
 }
 
 function getDailySummary(dateText, scope) {
@@ -274,7 +278,8 @@ function searchProducts(query, store) {
     return r[0] && allowedStatus && (!store || store === 'Oba sklepy' || r[1] === store) && normalize_([r[0],r[2],r[3],r[4],r[7],r[8],r[10],r[11],r[12],r[14],r[15],r[29],r[36]].join(' ')).includes(q);
   }).slice(0, 30).map(r => ({
     id:r[0], store:r[1], name:r[2], brand:r[3], category:r[4], style:r[7], materials:r[8], size:r[10], color:r[11], condition:r[12],
-    hasDefect:r[13], defect:r[15], tagPrice:r[17], location:r[23], eventId:r[24], status:r[25], comment:r[29], important:r[30], photoUrl:r[37] || ''
+    hasDefect:r[13], defect:r[15], tagPrice:r[17], location:r[23], eventId:r[24], status:r[25], comment:r[29], important:r[30],
+    photoUrl:r[37] || '', photoId:r[38] || '', photoThumb:photoThumb_(r[38],r[37]), photoStatus:r[41] || ''
   }));
 }
 
@@ -641,7 +646,8 @@ function numberOrZero_(v){ return v===''||v==null?0:Number(v)||0; }
 function moneyText_(v){return `${numberOrZero_(v).toFixed(2)} zł`;}
 function round2_(v){ return Math.round(numberOrZero_(v)*100)/100; }
 function saleUnits_(r){return r[23]&&numberOrZero_(r[14])<0?-1:1;}
-function productDto_(r){return{id:r[0],store:r[1],name:r[2],brand:r[3],category:r[4],subcategory:r[5],origin:r[6],style:r[7],materials:r[8],composition:r[9],size:r[10],color:r[11],condition:r[12],hasDefect:Boolean(r[13]),defectType:r[14],defect:r[15],defectInPrice:Boolean(r[16]),tagPrice:numberOrZero_(r[17]),purchaseCost:r[18],costStatus:r[19],materialCost:r[20],laborCost:r[21],totalCost:r[22],location:r[23],eventId:r[24],status:r[25],intakeDate:dateKey_(r[26]),saleDate:dateKey_(r[27]),saleId:r[28],comment:r[29],important:Boolean(r[30]),photoUrl:r[37]||'',photoStatus:r[41]||''};}
+function photoThumb_(fileId,url){const id=clean_(fileId)||(clean_(url).match(/[-\w]{20,}/)||[])[0]||'';return id?`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w500`:'';}
+function productDto_(r){return{id:r[0],store:r[1],name:r[2],brand:r[3],category:r[4],subcategory:r[5],origin:r[6],style:r[7],materials:r[8],composition:r[9],size:r[10],color:r[11],condition:r[12],hasDefect:Boolean(r[13]),defectType:r[14],defect:r[15],defectInPrice:Boolean(r[16]),tagPrice:numberOrZero_(r[17]),purchaseCost:r[18],costStatus:r[19],materialCost:r[20],laborCost:r[21],totalCost:r[22],location:r[23],eventId:r[24],status:r[25],intakeDate:dateKey_(r[26]),saleDate:dateKey_(r[27]),saleId:r[28],comment:r[29],important:Boolean(r[30]),photoUrl:r[37]||'',photoId:r[38]||'',photoThumb:photoThumb_(r[38],r[37]),photoStatus:r[41]||''};}
 function statusMoveType_(before,after){if(after==='Zarezerwowany')return'Rezerwacja';if(before==='Zarezerwowany'&&after==='Dostępny')return'Zwolnienie rezerwacji';if(after==='Wycofany')return'Wycofanie';if(after==='Dostępny')return'Korekta';return after;}
 function dataRows_(sh,width){ const last=sh.getLastRow(); return last<2?[]:sh.getRange(2,1,last-1,width).getValues(); }
 function parseDate_(v){ const s=clean_(v); if(!s) throw new Error('Wybierz datę.'); const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); const d=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])):new Date(v); if(isNaN(d.getTime())) throw new Error('Nieprawidłowa data.'); d.setHours(12,0,0,0); return d; }

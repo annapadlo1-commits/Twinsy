@@ -16,5 +16,7 @@ Testuj na kopii arkusza. Przy każdym punkcie sprawdź także wpis w `14_LOG`.
 12. Sprawdź stawki VAT/podatku, brakujące raporty i blokadę zamknięcia niekompletnego miesiąca.
 13. Utwórz backup, wykonaj podgląd importów i import. Powtórz import — liczba nowych rekordów ma wynieść zero.
 14. Uruchom diagnostykę: wymagany wynik to 0 błędów; ostrzeżenia muszą być świadomie zaakceptowane.
+15. W Analizach sprawdź wykres trendu, siedem dni tygodnia, porównanie sklepów, kanały, płatności, rabaty i wiek magazynu dla co najmniej dwóch różnych zakresów.
+16. Kliknij `Zapisz widok w 10_ANALITYKA` i sprawdź dwa natywne wykresy oraz zgodność ich sum z panelem aplikacji.
 
 Odbiór jest zakończony dopiero po przejściu wszystkich scenariuszy na telefonie i komputerze przez co najmniej jedną osobę z każdego sklepu.
