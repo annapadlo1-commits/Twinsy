@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.6
+
+Przed zapisem każdej partii importer sprawdza fizyczne wymiary zakładki i automatycznie dodaje brakujące wiersze lub kolumny. Usuwa to błąd „Współrzędne zakresu wykraczają poza wymiary arkusza”.
+
 ## 2.0.5
 
 Importer tymczasowo zdejmuje walidację wyłącznie z docelowej partii, zapisuje sprawdzone dane i natychmiast przywraca reguły, co eliminuje blokady typu E5920. Menu arkusza pokazuje właściwy adres wdrożenia mobilnego zakończony `/exec`.

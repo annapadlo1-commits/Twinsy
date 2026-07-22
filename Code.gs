@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.5'
+  VERSION: '2.0.6'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.5', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.6', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -534,7 +534,8 @@ function legacyAmount_(v){if(v===null||v===''||typeof v==='undefined')return nul
 function maxNumericId_(ids,prefix){return ids.reduce((m,id)=>{const x=String(id).match(new RegExp(`^${prefix}-(\\d+)$`));return x?Math.max(m,Number(x[1])):m;},0);}
 function appendRows_(sh,rows,width){
   if(!rows.length)return;
-  const start=sh.getLastRow()+1,target=sh.getRange(start,1,rows.length,width),rules=target.getDataValidations(),cache=new Map(),allowedFor=rule=>{
+  const start=sh.getLastRow()+1,requiredLastRow=start+rows.length-1;if(requiredLastRow>sh.getMaxRows())sh.insertRowsAfter(sh.getMaxRows(),requiredLastRow-sh.getMaxRows());if(width>sh.getMaxColumns())sh.insertColumnsAfter(sh.getMaxColumns(),width-sh.getMaxColumns());
+  const target=sh.getRange(start,1,rows.length,width),rules=target.getDataValidations(),cache=new Map(),allowedFor=rule=>{
     if(!rule)return null;const type=rule.getCriteriaType(),values=rule.getCriteriaValues();let key,list;
     if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST){key=`L:${JSON.stringify(values[0]||[])}`;if(cache.has(key))return cache.get(key);list=(values[0]||[]).map(normalize_);cache.set(key,list);return list;}
     if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE){const range=values[0];key=`R:${range.getSheet().getSheetId()}:${range.getA1Notation()}`;if(cache.has(key))return cache.get(key);list=range.getDisplayValues().flat().filter(Boolean).map(normalize_);cache.set(key,list);return list;}
