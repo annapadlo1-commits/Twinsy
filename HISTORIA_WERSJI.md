@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.8
+
+Dashboard i Analizy zwracają do interfejsu wyłącznie dane możliwe do bezpiecznej serializacji. Daty techniczne `Date` zostały zastąpione tekstem `YYYY-MM-DD`, dzięki czemu zakończone obliczenie dociera do panelu zamiast pozostawiać komunikat ładowania.
+
 ## 2.0.7
 
 Analityka agreguje wszystkie rankingi w jednym przebiegu danych i przechowuje wynik przez 10 minut. Dashboard nie uruchamia się automatycznie podczas startu aplikacji, dzięki czemu nie blokuje równoległej analizy. Interfejs kończy oczekiwanie po 30 sekundach czytelnym komunikatem.
