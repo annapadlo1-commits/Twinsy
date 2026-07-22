@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.7
+
+Analityka agreguje wszystkie rankingi w jednym przebiegu danych i przechowuje wynik przez 10 minut. Dashboard nie uruchamia się automatycznie podczas startu aplikacji, dzięki czemu nie blokuje równoległej analizy. Interfejs kończy oczekiwanie po 30 sekundach czytelnym komunikatem.
+
 ## 2.0.6
 
 Przed zapisem każdej partii importer sprawdza fizyczne wymiary zakładki i automatycznie dodaje brakujące wiersze lub kolumny. Usuwa to błąd „Współrzędne zakresu wykraczają poza wymiary arkusza”.

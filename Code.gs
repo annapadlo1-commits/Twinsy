@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.6'
+  VERSION: '2.0.7'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.6', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.7', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -94,9 +94,12 @@ function getDashboardData(input) {
 }
 
 function getAnalyticsData(input) {
-  assertAuthorized_(); const range=reportRange_(input||{}), salesSheet=sheet_(VP.SHEETS.SALES), cache=CacheService.getDocumentCache(), cacheKey=['ANA202',range.dateFrom,range.dateTo,range.store,range.channel,salesSheet.getLastRow()].join('|'), cached=cache.get(cacheKey); if(cached)return JSON.parse(cached); const sales=filteredSales_(range,salesSheet);
-  const analysis={range,total:sales.length,topCategories:rankSales_(sales,7),topProducts:rankSales_(sales,5),topBrands:rankSales_(sales,6),days:rankSales_(sales,r=>dateKey_(r[2]||r[1]),20),weekdays:rankSales_(sales,r=>weekday_(r[2]||r[1]),7),months:rankSales_(sales,r=>monthKey_(r[2]||r[1]),24),seasons:rankSales_(sales,r=>season_(r[2]||r[1]),4),channels:rankSales_(sales,8,10),payments:rankSales_(sales,15,10),fairs:rankSales_(sales,9,20)};
-  const json=JSON.stringify(analysis); if(json.length<90000)cache.put(cacheKey,json,180); return analysis;
+  assertAuthorized_();const range=reportRange_(input||{}),sh=sheet_(VP.SHEETS.SALES),last=sh.getLastRow(),cache=CacheService.getDocumentCache(),cacheKey=['ANA207',range.dateFrom,range.dateTo,range.store,range.channel,last].join('|'),cached=cache.get(cacheKey);if(cached)return JSON.parse(cached);
+  const rows=last<2?[]:sh.getRange(2,1,last-1,25).getValues(),start=range.start.getTime(),end=range.end.getTime()+86399999,maps={categories:{},products:{},brands:{},days:{},weekdays:{},months:{},seasons:{},channels:{},payments:{},fairs:{}},weekdayNames=['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];let total=0;
+  const add=(map,label,r)=>{label=clean_(label);if(!label)return;const x=map[label]||(map[label]={label,count:0,revenue:0,discount:0});x.count+=saleUnits_(r);x.revenue+=numberOrZero_(r[14]);x.discount+=numberOrZero_(r[13]);};
+  rows.forEach(r=>{if(!r[0]||r[20]==='Anulowana')return;const d=r[2]||r[1],date=d instanceof Date?d:new Date(d);if(isNaN(date.getTime())||date.getTime()<start||date.getTime()>end)return;if(range.store!=='Oba sklepy'&&r[3]!==range.store)return;if(range.channel!=='Wszystkie'&&r[8]!==range.channel)return;total+=saleUnits_(r);const day=localDateKey_(date),month=day.slice(0,7),m=date.getMonth()+1,season=m===12||m<=2?'Zima':m<=5?'Wiosna':m<=8?'Lato':'Jesień';add(maps.categories,r[7],r);add(maps.products,r[5],r);add(maps.brands,r[6],r);add(maps.days,day,r);add(maps.weekdays,weekdayNames[date.getDay()],r);add(maps.months,month,r);add(maps.seasons,season,r);add(maps.channels,r[8],r);add(maps.payments,r[15],r);add(maps.fairs,r[9],r);});
+  const finish=(map,max)=>Object.values(map).map(x=>({label:x.label,count:x.count,revenue:round2_(x.revenue),average:x.count>0?round2_(x.revenue/x.count):0,discount:round2_(x.discount)})).sort((a,b)=>b.revenue-a.revenue||b.count-a.count).slice(0,max),analysis={range,total,topCategories:finish(maps.categories,10),topProducts:finish(maps.products,10),topBrands:finish(maps.brands,10),days:finish(maps.days,20),weekdays:finish(maps.weekdays,7),months:finish(maps.months,24),seasons:finish(maps.seasons,4),channels:finish(maps.channels,10),payments:finish(maps.payments,10),fairs:finish(maps.fairs,20)};
+  const json=JSON.stringify(analysis);if(json.length<90000)cache.put(cacheKey,json,600);return analysis;
 }
 
 function saveTaxSettings(input) {
@@ -643,6 +646,7 @@ function statusMoveType_(before,after){if(after==='Zarezerwowany')return'Rezerwa
 function dataRows_(sh,width){ const last=sh.getLastRow(); return last<2?[]:sh.getRange(2,1,last-1,width).getValues(); }
 function parseDate_(v){ const s=clean_(v); if(!s) throw new Error('Wybierz datę.'); const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); const d=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])):new Date(v); if(isNaN(d.getTime())) throw new Error('Nieprawidłowa data.'); d.setHours(12,0,0,0); return d; }
 function dateKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?'':Utilities.formatDate(d,Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM-dd'); }
+function localDateKey_(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function sameDay_(a,b){ return dateKey_(a)===dateKey_(b); }
 function monthKey_(v){ if(!v) return ''; const d=v instanceof Date?v:new Date(v); return isNaN(d.getTime())?'':Utilities.formatDate(d,Session.getScriptTimeZone()||'Europe/Warsaw','yyyy-MM'); }
 function normalizePeriod_(v){ const s=clean_(v); const m=s.match(/^(\d{4})[-./](\d{1,2})$/); if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`; const d=new Date(v); if(!isNaN(d.getTime())) return monthKey_(d); throw new Error('Wybierz prawidłowy miesiąc rozliczeniowy.'); }
