@@ -1,4 +1,4 @@
-# Vintage PRO 2.0.0 — wydanie finalne
+# Vintage PRO 2.0.1 — wydanie finalne
 
 Bezpłatna aplikacja Google Sheets + Apps Script dla TWINS PICK i VILANA VINTAGE. Obsługuje komputer i telefon, magazyn produktów jednostkowych, sprzedaż, targi, raporty dobowe, wydatki, rozliczenia 50/50, analitykę, korekty, zdjęcia i migrację danych historycznych.
 
@@ -6,7 +6,7 @@ Bezpłatna aplikacja Google Sheets + Apps Script dla TWINS PICK i VILANA VINTAGE
 
 1. Otwórz docelowy arkusz i wybierz **Rozszerzenia → Apps Script**.
 2. Zastąp `Code.gs`, `Mobile.html` i `appsscript.json` plikami z paczki (plik HTML musi nazywać się `Mobile`).
-3. Zapisz projekt, odśwież arkusz i wybierz **VINTAGE PRO → Przygotuj wersję finalną 2.0.0**.
+3. Zapisz projekt, odśwież arkusz i wybierz **VINTAGE PRO → Przygotuj / napraw wersję 2.0.1**. Ta czynność wiąże wdrożenie z aktualnie otwartym arkuszem.
 4. W `13_UŻYTKOWNICY` dodaj konta Google; pola `Aktywny` i `Telefon – dostęp` muszą być zaznaczone.
 5. W `12_USTAWIENIA` wpisz prawdziwe ID folderów `FOLDER_ZDJĘCIA_ID` i `FOLDER_DOKUMENTY_ID`; opcjonalnie `FOLDER_BACKUP_ID`.
 6. Wybierz **Wdróż → Zarządzaj wdrożeniami**, edytuj wdrożenie aplikacji internetowej, wybierz **Nowa wersja** i kliknij **Wdróż**. Zachowaj adres zakończony `/exec`.
