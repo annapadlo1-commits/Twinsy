@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.8'
+  VERSION: '2.0.9'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.8', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.9', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -558,12 +558,12 @@ function inferExpenseCategory_(v){const n=normalize_(v);if(n.includes('czynsz'))
 function inferAccountingClass_(v){const n=normalize_(v);if(n.includes('kaucj'))return'Kaucja zwrotna';if(n.includes('podatek'))return'Podatek';if(n.includes('towar'))return'Zakup towaru';if(n.includes('wyposaz')||n.includes('remont'))return'Inwestycja / wyposażenie';return'Do potwierdzenia';}
 
 function assertAuthorized_() {
-  const email = Session.getActiveUser().getEmail();
-  if (!email) throw new Error('Nie udało się rozpoznać konta Google. Otwórz aplikację po zalogowaniu.');
+  const active=clean_(Session.getActiveUser().getEmail()),effective=clean_(Session.getEffectiveUser().getEmail()),email=(active||effective).toLowerCase();
+  if (!email) throw new Error('Nie udało się rozpoznać konta Google. Wdrożenie musi działać jako „Użytkownik uzyskujący dostęp do aplikacji”.');
   const sh = sheet_(VP.SHEETS.USERS);
   const last = sh.getLastRow();
   const users = last < 2 ? [] : sh.getRange(2,1,last-1,5).getValues();
-  const allowed = users.some(r => String(r[0]).toLowerCase() === email.toLowerCase() && r[3] === true && r[4] === true);
+  const allowed = users.some(r => clean_(r[0]).toLowerCase() === email && r[3] === true && r[4] === true);
   if (!allowed) throw new Error(`Brak dostępu dla konta ${email}. Dodaj je w zakładce 13_UŻYTKOWNICY.`);
   return email;
 }

@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.9
+
+Autoryzacja prywatnych kont Gmail korzysta z aktywnego użytkownika, a gdy Google nie udostępnia tej wartości — z użytkownika wykonującego skrypt. Adres nadal musi znajdować się na aktywnej liście `13_UŻYTKOWNICY` z dostępem mobilnym.
+
 ## 2.0.8
 
 Dashboard i Analizy zwracają do interfejsu wyłącznie dane możliwe do bezpiecznej serializacji. Daty techniczne `Date` zostały zastąpione tekstem `YYYY-MM-DD`, dzięki czemu zakończone obliczenie dociera do panelu zamiast pozostawiać komunikat ładowania.
