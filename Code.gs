@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.0.2'
+  VERSION: '2.0.3'
 });
 let VP_BOOK_;
 
@@ -11,7 +11,7 @@ function onOpen() {
     .addItem('Otwórz panel', 'showApp')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj / napraw wersję 2.0.2', 'installFinalVersion')
+    .addItem('Przygotuj / napraw wersję 2.0.3', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -525,7 +525,17 @@ function assertRecentBackup_(){const t=Number(PropertiesService.getScriptPropert
 function validDate_(v){if(!v)return null;const d=v instanceof Date?new Date(v):new Date(v);if(isNaN(d.getTime()))return null;d.setHours(12,0,0,0);return d;}
 function legacyAmount_(v){if(v===null||v===''||typeof v==='undefined')return null;if(typeof v==='number')return Number.isFinite(v)?round2_(v):null;const n=Number(String(v).replace(/\s/g,'').replace(/zł/ig,'').replace(',','.').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?round2_(n):null;}
 function maxNumericId_(ids,prefix){return ids.reduce((m,id)=>{const x=String(id).match(new RegExp(`^${prefix}-(\\d+)$`));return x?Math.max(m,Number(x[1])):m;},0);}
-function appendRows_(sh,rows,width){if(!rows.length)return;sh.getRange(sh.getLastRow()+1,1,rows.length,width).setValues(rows);}
+function appendRows_(sh,rows,width){
+  if(!rows.length)return;
+  const start=sh.getLastRow()+1,target=sh.getRange(start,1,rows.length,width),rules=sh.getRange(start,1,1,width).getDataValidations()[0],allowed=rules.map(rule=>{
+    if(!rule)return null;const type=rule.getCriteriaType(),values=rule.getCriteriaValues();
+    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST)return(values[0]||[]).map(normalize_);
+    if(type===SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE)return values[0].getDisplayValues().flat().filter(Boolean).map(normalize_);
+    return null;
+  });
+  const safe=rows.map(row=>row.map((value,col)=>{const list=allowed[col];if(!list||value===''||value===null)return value;return list.includes(normalize_(value))?value:'';}));
+  target.setValues(safe);
+}
 function duplicateCount_(values){const seen=new Set();let n=0;values.forEach(v=>{if(seen.has(v))n++;else seen.add(v);});return n;}
 function normalizePayment_(v){const n=normalize_(v);if(n.includes('got'))return'Gotówka';if(n.includes('kart')||n.includes('terminal'))return'Karta';if(n.includes('blik'))return'BLIK';if(n.includes('przelew'))return'Przelew';return'Inna';}
 function inferCategory_(name){const n=normalize_(name),rules=[['Sukienki',['sukien']],['Biżuteria',['naszyj','kolczy','branso','pierscion','bizuter']],['Spodnie',['spodni','jeans']],['Spódnice',['spodnic']],['Koszule i bluzki',['koszul','bluzk']],['Kurtki i płaszcze',['kurtk','plaszcz']],['Swetry',['swetr','kardigan']],['Torebki',['toreb']],['Buty',['but','kozaki','sandaly']],['Akcesoria',['pasek','apaszk','szal','czapk']]];const hit=rules.find(x=>x[1].some(k=>n.includes(k)));return hit?hit[0]:'Inne';}

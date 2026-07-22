@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 2.0.3
+
+Importer sprawdza przed zapisem wszystkie listy walidacyjne arkusza. Wartość historyczna, której nie można jednoznacznie dopasować do aktualnego słownika, pozostaje pusta zamiast zatrzymywać cały import błędem komórki.
+
 ## 2.0.2
 
 Naprawiono import produktów historycznych blokowany przez walidację kolumny stanu. Usunięto wielokrotne, kosztowne przeliczanie miesięcy podczas importu. Dashboard i analityka używają lżejszego odczytu, wspólnej pamięci podręcznej i nie zależą już od rozmiaru dziennika operacji.
