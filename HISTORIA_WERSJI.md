@@ -60,3 +60,8 @@ Produkty, sprzedaż, zdjęcia, raporty dobowe, targi, wydatki i rozliczenia.
 - miniatury zdjęć w Magazynie i wynikach wyszukiwania produktów,
 - duży podgląd i link do oryginału w szczegółach produktu,
 - obsługa braku zdjęcia oraz niedostępnego podglądu.
+# 2.1.2
+
+- podgląd zdjęcia produktu pobierany przez autoryzowany backend Apps Script,
+- poprawne wyświetlanie prywatnych zdjęć z Dysku także na iPhone,
+- czytelny komunikat, jeśli zdjęcie rzeczywiście nie istnieje lub konto nie ma dostępu.

@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.1.1'
+  VERSION: '2.1.2'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj paczkę 2.1.1 — miniatury zdjęć', 'installFinalVersion')
+    .addItem('Przygotuj paczkę 2.1.2 — podgląd zdjęć', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -286,6 +286,24 @@ function searchProducts(query, store) {
 function searchInventory(query, store, status) {
   assertAuthorized_(); const q=normalize_(query), rows=dataRows_(sheet_(VP.SHEETS.PRODUCTS),42);
   return rows.filter(r=>r[0]&&r[35]!==false&&(!store||store==='Oba sklepy'||r[1]===store)&&(!status||status==='Wszystkie'||r[25]===status)&&(!q||normalize_([r[0],r[2],r[3],r[4],r[7],r[8],r[10],r[11],r[12],r[15],r[23],r[25],r[29]].join(' ')).includes(q))).slice(0,100).map(productDto_);
+}
+
+function getProductPhoto(productId) {
+  assertAuthorized_();
+  require_(productId, 'Brak ID produktu.');
+  const rows = dataRows_(sheet_(VP.SHEETS.PRODUCTS), 42);
+  const row = rows.find(r => clean_(r[0]) === clean_(productId));
+  if (!row) throw new Error('Nie znaleziono produktu.');
+  const fileId = clean_(row[38]) || ((clean_(row[37]).match(/[-\w]{20,}/) || [])[0] || '');
+  if (!fileId) return { ok:false, message:'Ten produkt nie ma zapisanego zdjęcia.' };
+  try {
+    const blob = DriveApp.getFileById(fileId).getBlob();
+    const mime = blob.getContentType() || 'image/jpeg';
+    if (!/^image\//i.test(mime)) throw new Error('Zapisany plik nie jest obrazem.');
+    return { ok:true, dataUrl:`data:${mime};base64,${Utilities.base64Encode(blob.getBytes())}`, url:row[37] || '' };
+  } catch (e) {
+    throw new Error(`Nie udało się pobrać zdjęcia produktu: ${e.message}`);
+  }
 }
 
 function getRecentSales(query, store, limit) {
