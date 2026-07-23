@@ -20,3 +20,12 @@ Testuj na kopii arkusza. Przy każdym punkcie sprawdź także wpis w `14_LOG`.
 16. Kliknij `Zapisz widok w 10_ANALITYKA` i sprawdź dwa natywne wykresy oraz zgodność ich sum z panelem aplikacji.
 
 Odbiór jest zakończony dopiero po przejściu wszystkich scenariuszy na telefonie i komputerze przez co najmniej jedną osobę z każdego sklepu.
+# Testy wydajności 2.2.0
+
+1. Sprzedaj produkt bez zdjęcia i zapisz czas pokazany w zielonym komunikacie.
+2. Sprzedaj produkt ze zdjęciem — ten wariant może potrwać dłużej ze względu na przesłanie pliku na Dysk.
+3. Sprawdź, czy po sprzedaży produkt ma status „Sprzedany w sklepie” albo „Sprzedany na targach”.
+4. Sprawdź, czy transakcja pojawiła się w `04_SPRZEDAŻ`, ruch w `07_RUCHY_TOWARU`, a operacja w `14_LOG`.
+5. Otwórz Finanse i potwierdź, że bieżący miesiąc został przeliczony z nową sprzedażą.
+6. Dla sprzedaży targowej otwórz moduł Targi i potwierdź odświeżenie statystyk wydarzenia.
+7. Kliknij „Zatwierdź sprzedaż” szybko dwa razy — powinna zostać zapisana tylko jedna transakcja.

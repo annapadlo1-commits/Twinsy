@@ -1,7 +1,7 @@
 const VP = Object.freeze({
   SPREADSHEET_ID: '1qY8_eXX34Gsxf6vyBRl0Krdy9NiRYGZ6a7KZscSHz2o',
   SHEETS: { PRODUCTS: '03_PRODUKTY', SALES: '04_SPRZEDAŻ', DAILY: '05_RAPORTY_DZIENNE', FAIRS: '06_TARGI', MOVES: '07_RUCHY_TOWARU', EXPENSES: '08_WYDATKI', FINANCE: '09_ROZLICZENIA', ANALYTICS: '10_ANALITYKA', DICTS: '11_SŁOWNIKI', SETTINGS: '12_USTAWIENIA', USERS: '13_UŻYTKOWNICY', LOG: '14_LOG', SETTLEMENTS: '15_ROZLICZENIA_WZAJEMNE' },
-  VERSION: '2.1.2'
+  VERSION: '2.2.0'
 });
 let VP_BOOK_;
 
@@ -12,7 +12,7 @@ function onOpen() {
     .addItem('Pokaż link aplikacji mobilnej', 'showMobileAppUrl')
     .addItem('Sprawdź konfigurację', 'checkConfiguration')
     .addSeparator()
-    .addItem('Przygotuj paczkę 2.1.2 — podgląd zdjęć', 'installFinalVersion')
+    .addItem('Przygotuj dużą paczkę 2.2.0 — wydajność', 'installFinalVersion')
     .addItem('Odśwież analitykę', 'refreshAnalyticsSheet')
     .addToUi();
 }
@@ -184,7 +184,7 @@ function createFair(input) {
   return {ok:true,id,message:`Utworzono wydarzenie ${input.name}.`,fairs:listFairs_()};
 }
 
-function getFairs() { assertAuthorized_(); return listFairs_(); }
+function getFairs() { assertAuthorized_(); refreshDirtyFairs_(); return listFairs_(); }
 
 function moveProductToFair(input) {
   return moveProduct_(input, true);
@@ -201,16 +201,16 @@ function moveProduct_(input, outbound) {
   try {
     const fair = findFair_(input.eventId); if (!fair) throw new Error('Nie znaleziono wydarzenia targowego.');
     if (['Zakończone','Anulowane'].includes(fair.status)) throw new Error('To wydarzenie jest już zamknięte.');
-    const sh = sheet_(VP.SHEETS.PRODUCTS), rows = dataRows_(sh,42), index = rows.findIndex(r => String(r[0]) === String(input.productId));
-    if (index < 0) throw new Error('Nie znaleziono produktu.');
-    const r = rows[index], now = new Date(), rowNo = index + 2;
+    const sh=sheet_(VP.SHEETS.PRODUCTS),rowNo=findProductRow_(sh,input.productId);
+    if(!rowNo)throw new Error('Nie znaleziono produktu.');
+    const r=sh.getRange(rowNo,1,1,42).getValues()[0],now=new Date();
     if (outbound && r[25] !== 'Dostępny') throw new Error(`Produkt ma status „${r[25]}” i nie może zostać wydany.`);
     if (!outbound && (r[25] !== 'Na targach' || String(r[24]) !== String(input.eventId))) throw new Error('Produkt nie znajduje się na wybranych targach.');
     const source = r[23], target = outbound ? `Targi: ${fair.name}` : r[1];
     sh.getRange(rowNo,24,1,13).setValues([[target,outbound ? input.eventId : '',outbound ? 'Na targach' : 'Dostępny',r[26],r[27],r[28],r[29],r[30],r[31],r[32],now,user,r[35]]]);
     const moveId = uniqueId_('MOVE');
-    sheet_(VP.SHEETS.MOVES).appendRow([moveId,now,r[0],r[1],outbound?'Wydanie na targi':'Powrót z targów',source,target,input.eventId,'Nie dotyczy',clean_(input.comment),user,now,input.eventId]);
-    refreshFairStats_(input.eventId);
+    appendFast_(sheet_(VP.SHEETS.MOVES),[moveId,now,r[0],r[1],outbound?'Wydanie na targi':'Powrót z targów',source,target,input.eventId,'Nie dotyczy',clean_(input.comment),user,now,input.eventId]);
+    markFairDirty_(input.eventId);
     appendLog_(user,'mobile/web',outbound?'WYDANIE_NA_TARGI':'POWRÓT_Z_TARGÓW','produkt',r[0],source,target,input.comment||'');
     return {ok:true,moveId,message:outbound?`Przeniesiono ${r[2]} na ${fair.name}.`:`Przywrócono ${r[2]} do ${r[1]}.`};
   } finally { lock.releaseLock(); }
@@ -259,7 +259,7 @@ function addProduct(input) {
       Boolean(input.important), now, user, now, user, true, searchKey_(input),
       photo ? photo.url : '', photo ? photo.id : '', photo ? now : '', photo ? user : '', photo ? 'Dodane' : 'Brak zdjęcia'
     ];
-    sh.appendRow(row);
+    appendFast_(sh,row);
     appendLog_(user, 'mobile/web', 'DODAJ_PRODUKT', 'produkt', id, '', JSON.stringify({name: input.name, store: input.store}), input.comment || '');
     return { ok: true, id, message: `Dodano produkt ${id}.` };
   } finally { lock.releaseLock(); }
@@ -291,9 +291,9 @@ function searchInventory(query, store, status) {
 function getProductPhoto(productId) {
   assertAuthorized_();
   require_(productId, 'Brak ID produktu.');
-  const rows = dataRows_(sheet_(VP.SHEETS.PRODUCTS), 42);
-  const row = rows.find(r => clean_(r[0]) === clean_(productId));
-  if (!row) throw new Error('Nie znaleziono produktu.');
+  const sh=sheet_(VP.SHEETS.PRODUCTS),rowNo=findProductRow_(sh,productId);
+  if(!rowNo)throw new Error('Nie znaleziono produktu.');
+  const row=sh.getRange(rowNo,1,1,42).getValues()[0];
   const fileId = clean_(row[38]) || ((clean_(row[37]).match(/[-\w]{20,}/) || [])[0] || '');
   if (!fileId) return { ok:false, message:'Ten produkt nie ma zapisanego zdjęcia.' };
   try {
@@ -314,12 +314,12 @@ function getRecentSales(query, store, limit) {
 function changeProductStatus(input) {
   const user=assertAuthorized_(); input=input||{}; require_(input.productId,'Wybierz produkt.'); require_(input.status,'Wybierz nowy status.');
   const transitions={Dostępny:['Zarezerwowany','Do naprawy','Wycofany','Zagubiony / brak'],Zarezerwowany:['Dostępny','Wycofany'],Zwrócony:['Dostępny','Do naprawy','Wycofany'],'Do naprawy':['Dostępny','Wycofany'],'Zagubiony / brak':['Dostępny','Wycofany']};
-  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS), rows=dataRows_(sh,42), i=rows.findIndex(r=>String(r[0])===String(input.productId));if(i<0)throw new Error('Nie znaleziono produktu.');const r=rows[i],allowed=transitions[r[25]]||[];if(!allowed.includes(input.status))throw new Error(`Zmiana „${r[25]}” → „${input.status}” nie jest dozwolona.`);const now=new Date(),comment=[clean_(r[29]),clean_(input.comment)].filter(Boolean).join(' | ');sh.getRange(i+2,24,1,13).setValues([[input.status==='Dostępny'?r[1]:r[23],input.status==='Dostępny'?'':r[24],input.status,r[26],r[27],r[28],comment,r[30],r[31],r[32],now,user,r[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,r[0],r[1],statusMoveType_(r[25],input.status),r[23],input.status==='Dostępny'?r[1]:input.status,r[24],'Nie dotyczy',clean_(input.comment),user,now,'']);appendLog_(user,'mobile/web','ZMIANA_STATUSU','produkt',r[0],r[25],input.status,input.comment||'');return{ok:true,message:`Status produktu zmieniono na „${input.status}”.`};}finally{lock.releaseLock();}
+  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS),rowNo=findProductRow_(sh,input.productId);if(!rowNo)throw new Error('Nie znaleziono produktu.');const r=sh.getRange(rowNo,1,1,42).getValues()[0],allowed=transitions[r[25]]||[];if(!allowed.includes(input.status))throw new Error(`Zmiana „${r[25]}” → „${input.status}” nie jest dozwolona.`);const now=new Date(),comment=[clean_(r[29]),clean_(input.comment)].filter(Boolean).join(' | ');sh.getRange(rowNo,24,1,13).setValues([[input.status==='Dostępny'?r[1]:r[23],input.status==='Dostępny'?'':r[24],input.status,r[26],r[27],r[28],comment,r[30],r[31],r[32],now,user,r[35]]]);appendFast_(sheet_(VP.SHEETS.MOVES),[uniqueId_('MOVE'),now,r[0],r[1],statusMoveType_(r[25],input.status),r[23],input.status==='Dostępny'?r[1]:input.status,r[24],'Nie dotyczy',clean_(input.comment),user,now,'']);appendLog_(user,'mobile/web','ZMIANA_STATUSU','produkt',r[0],r[25],input.status,input.comment||'');return{ok:true,message:`Status produktu zmieniono na „${input.status}”.`};}finally{lock.releaseLock();}
 }
 
 function updateProduct(input) {
   const user=assertAuthorized_();input=input||{};require_(input.productId,'Brak ID produktu.');require_(input.name,'Nazwa produktu jest wymagana.');require_(input.category,'Kategoria jest wymagana.');
-  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS),rows=dataRows_(sh,42),i=rows.findIndex(r=>String(r[0])===String(input.productId));if(i<0)throw new Error('Nie znaleziono produktu.');const r=rows[i],now=new Date(),defect=Boolean(input.hasDefect);if(defect&&!clean_(input.defectDescription))throw new Error('Opisz wadę produktu.');const purchase=optionalMoney_(input.purchaseCost),materials=optionalMoney_(input.materialCost),labor=optionalMoney_(input.laborCost),costStatus=input.costStatus||'Nieznany',total=costStatus==='Nieznany'?'':numberOrZero_(purchase)+numberOrZero_(materials)+numberOrZero_(labor);const fields=[clean_(input.name),clean_(input.brand),input.category,clean_(input.subcategory),input.origin||r[6],clean_(input.style),clean_(input.materials),clean_(input.composition),clean_(input.size),clean_(input.color),input.condition||r[12],defect,clean_(input.defectType),clean_(input.defectDescription),Boolean(input.defectInPrice),money_(input.tagPrice),purchase,costStatus,materials,labor,total];sh.getRange(i+2,3,1,21).setValues([fields]);sh.getRange(i+2,30,1,8).setValues([[clean_(input.comment),Boolean(input.important),r[31],r[32],now,user,r[35],searchKey_(input)]]);appendLog_(user,'mobile/web','EDYTUJ_PRODUKT','produkt',r[0],JSON.stringify({name:r[2],price:r[17]}),JSON.stringify({name:input.name,price:input.tagPrice}),input.comment||'');return{ok:true,message:`Zapisano zmiany produktu ${r[0]}.`};}finally{lock.releaseLock();}
+  const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sh=sheet_(VP.SHEETS.PRODUCTS),rowNo=findProductRow_(sh,input.productId);if(!rowNo)throw new Error('Nie znaleziono produktu.');const r=sh.getRange(rowNo,1,1,42).getValues()[0],now=new Date(),defect=Boolean(input.hasDefect);if(defect&&!clean_(input.defectDescription))throw new Error('Opisz wadę produktu.');const purchase=optionalMoney_(input.purchaseCost),materials=optionalMoney_(input.materialCost),labor=optionalMoney_(input.laborCost),costStatus=input.costStatus||'Nieznany',total=costStatus==='Nieznany'?'':numberOrZero_(purchase)+numberOrZero_(materials)+numberOrZero_(labor);const fields=[clean_(input.name),clean_(input.brand),input.category,clean_(input.subcategory),input.origin||r[6],clean_(input.style),clean_(input.materials),clean_(input.composition),clean_(input.size),clean_(input.color),input.condition||r[12],defect,clean_(input.defectType),clean_(input.defectDescription),Boolean(input.defectInPrice),money_(input.tagPrice),purchase,costStatus,materials,labor,total];sh.getRange(rowNo,3,1,21).setValues([fields]);sh.getRange(rowNo,30,1,8).setValues([[clean_(input.comment),Boolean(input.important),r[31],r[32],now,user,r[35],searchKey_(input)]]);appendLog_(user,'mobile/web','EDYTUJ_PRODUKT','produkt',r[0],JSON.stringify({name:r[2],price:r[17]}),JSON.stringify({name:input.name,price:input.tagPrice}),input.comment||'');return{ok:true,message:`Zapisano zmiany produktu ${r[0]}.`};}finally{lock.releaseLock();}
 }
 
 function cancelSale(input) { return reverseSale_(input,false); }
@@ -328,12 +328,13 @@ function returnSale(input) { return reverseSale_(input,true); }
 function reverseSale_(input,isReturn) {
   const user=assertAuthorized_();input=input||{};require_(input.saleId,'Wybierz transakcję.');require_(input.reason,'Wpisz powód operacji.');const now=new Date();if(isMonthClosed_(monthKey_(now)))throw new Error('Bieżący miesiąc finansowy jest zamknięty.');
   const lock=LockService.getDocumentLock();lock.waitLock(20000);try{const sales=sheet_(VP.SHEETS.SALES),rows=dataRows_(sales,25),i=rows.findIndex(r=>String(r[0])===String(input.saleId));if(i<0)throw new Error('Nie znaleziono transakcji.');const s=rows[i];if(!isReturn&&isMonthClosed_(monthKey_(s[2]||s[1])))throw new Error('Nie można anulować wpisu z zamkniętego miesiąca. Użyj zwrotu klienta w bieżącym okresie.');if(s[20]!=='Aktywna')throw new Error(`Transakcja ma status „${s[20]}” i nie może zostać zmieniona.`);if(s[23])throw new Error('Nie można korygować wiersza korekty.');const products=sheet_(VP.SHEETS.PRODUCTS),pr=dataRows_(products,42),pi=pr.findIndex(r=>String(r[0])===String(s[4]));if(pi<0)throw new Error('Nie znaleziono produktu powiązanego ze sprzedażą.');const p=pr[pi];if(String(p[28])!==String(s[0]))throw new Error('Produkt nie jest już powiązany z tą transakcją. Operacja została zatrzymana.');
-    if(isReturn){const correctionId=uniqueId_('CORR'),cost=s[16]===''?'':-numberOrZero_(s[16]),margin=s[18]===''?'':-numberOrZero_(s[18]);sales.getRange(i+2,21).setValue('Skorygowana');sales.appendRow([correctionId,now,now,s[3],s[4],s[5],s[6],s[7],s[8],s[9],0,'Zwrot klienta','',0,-numberOrZero_(s[14]),s[15],cost,s[17],margin,clean_(input.reason),'Aktywna',user,now,s[0],clean_(input.reason)]);products.getRange(pi+2,24,1,13).setValues([[s[3],'','Zwrócony',p[26],now,correctionId,[clean_(p[29]),`Zwrot: ${clean_(input.reason)}`].filter(Boolean).join(' | '),true,p[31],p[32],now,user,p[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,p[0],p[1],'Zwrot klienta','Klient','Kontrola zwrotu','', 'Nie dotyczy',clean_(input.reason),user,now,correctionId]);appendLog_(user,'mobile/web','ZWROT_KLIENTA','sprzedaż',s[0],'Aktywna','Skorygowana',input.reason);refreshMonthlyFinance_(monthKey_(now));return{ok:true,message:`Zapisano zwrot ${moneyText_(s[14])}. Produkt oczekuje na kontrolę.`};}
-    sales.getRange(i+2,21,1,5).setValues([['Anulowana',s[21],s[22],s[23],clean_(input.reason)]]);products.getRange(pi+2,24,1,13).setValues([[p[1],'','Dostępny',p[26],'','',p[29],p[30],p[31],p[32],now,user,p[35]]]);sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,p[0],p[1],'Korekta','Klient',p[1],'','Nie dotyczy',clean_(input.reason),user,now,s[0]]);appendLog_(user,'mobile/web','ANULUJ_SPRZEDAŻ','sprzedaż',s[0],'Aktywna','Anulowana',input.reason);refreshMonthlyFinance_(monthKey_(s[2]||s[1]));return{ok:true,message:'Sprzedaż została anulowana, a produkt wrócił do stanu.'};
+    if(isReturn){const correctionId=uniqueId_('CORR'),cost=s[16]===''?'':-numberOrZero_(s[16]),margin=s[18]===''?'':-numberOrZero_(s[18]);sales.getRange(i+2,21).setValue('Skorygowana');appendFast_(sales,[correctionId,now,now,s[3],s[4],s[5],s[6],s[7],s[8],s[9],0,'Zwrot klienta','',0,-numberOrZero_(s[14]),s[15],cost,s[17],margin,clean_(input.reason),'Aktywna',user,now,s[0],clean_(input.reason)]);products.getRange(pi+2,24,1,13).setValues([[s[3],'','Zwrócony',p[26],now,correctionId,[clean_(p[29]),`Zwrot: ${clean_(input.reason)}`].filter(Boolean).join(' | '),true,p[31],p[32],now,user,p[35]]]);appendFast_(sheet_(VP.SHEETS.MOVES),[uniqueId_('MOVE'),now,p[0],p[1],'Zwrot klienta','Klient','Kontrola zwrotu','', 'Nie dotyczy',clean_(input.reason),user,now,correctionId]);appendLog_(user,'mobile/web','ZWROT_KLIENTA','sprzedaż',s[0],'Aktywna','Skorygowana',input.reason);markFinanceDirty_(monthKey_(now));return{ok:true,message:`Zapisano zwrot ${moneyText_(s[14])}. Produkt oczekuje na kontrolę.`};}
+    sales.getRange(i+2,21,1,5).setValues([['Anulowana',s[21],s[22],s[23],clean_(input.reason)]]);products.getRange(pi+2,24,1,13).setValues([[p[1],'','Dostępny',p[26],'','',p[29],p[30],p[31],p[32],now,user,p[35]]]);appendFast_(sheet_(VP.SHEETS.MOVES),[uniqueId_('MOVE'),now,p[0],p[1],'Korekta','Klient',p[1],'','Nie dotyczy',clean_(input.reason),user,now,s[0]]);appendLog_(user,'mobile/web','ANULUJ_SPRZEDAŻ','sprzedaż',s[0],'Aktywna','Anulowana',input.reason);markFinanceDirty_(monthKey_(s[2]||s[1]));return{ok:true,message:'Sprzedaż została anulowana, a produkt wrócił do stanu.'};
   }finally{lock.releaseLock();}
 }
 
 function sellProduct(input) {
+  const startedAt = Date.now();
   const user = assertAuthorized_();
   input = input || {};
   require_(input.productId, 'Wybierz produkt.');
@@ -346,9 +347,8 @@ function sellProduct(input) {
   lock.waitLock(20000);
   try {
     const products = sheet_(VP.SHEETS.PRODUCTS);
-    const hit = products.getRange(2, 1, Math.max(products.getLastRow() - 1, 1), 42).getValues().findIndex(r => String(r[0]) === String(input.productId));
-    if (hit < 0) throw new Error('Nie znaleziono produktu.');
-    const rowNo = hit + 2;
+    const rowNo = findProductRow_(products, input.productId);
+    if (!rowNo) throw new Error('Nie znaleziono produktu.');
     const r = products.getRange(rowNo, 1, 1, 42).getValues()[0];
     if (!['Dostępny','Na targach','Zarezerwowany'].includes(r[25])) throw new Error(`Produkt ma status „${r[25]}” i nie może zostać sprzedany.`);
     const channel = input.channel || (r[25] === 'Na targach' ? 'Targi' : 'Sklep stacjonarny');
@@ -362,7 +362,7 @@ function sellProduct(input) {
     const saleRow = [saleId, now, now, r[1], r[0], r[2], r[3], r[4], channel, input.eventId || r[24] || '', tagPrice,
       input.discountType || (discountValue ? 'Cena negocjowana' : 'Brak'), optionalNumber_(input.declaredDiscount), discountValue, finalPrice,
       input.payment, totalCost, r[19], margin, clean_(input.comment), 'Aktywna', user, now, '', ''];
-    sheet_(VP.SHEETS.SALES).appendRow(saleRow);
+    appendFast_(sheet_(VP.SHEETS.SALES), saleRow);
     if (input.imageDataUrl && !r[37]) {
       const photo = saveImage_(input.imageDataUrl, r[0], 'sprzedaż');
       products.getRange(rowNo, 38, 1, 5).setValues([[photo.url, photo.id, now, user, 'Dodane przy sprzedaży']]);
@@ -370,11 +370,11 @@ function sellProduct(input) {
     const saleEventId = input.eventId || r[24] || '';
     const saleLocation = channel === 'Targi' ? (r[25] === 'Na targach' ? r[23] : `Targi: ${(findFair_(saleEventId)||{}).name||saleEventId}`) : r[1];
     products.getRange(rowNo, 24, 1, 13).setValues([[saleLocation, saleEventId, channel === 'Targi' ? 'Sprzedany na targach' : 'Sprzedany w sklepie', r[26], now, saleId, r[29], r[30], r[31], r[32], now, user, r[35]]]);
-    sheet_(VP.SHEETS.MOVES).appendRow([uniqueId_('MOVE'),now,r[0],r[1],'Sprzedaż',r[23],'Klient',input.eventId||r[24]||'','Nie dotyczy',clean_(input.comment),user,now,saleId]);
-    if (channel === 'Targi') refreshFairStats_(saleEventId);
+    appendFast_(sheet_(VP.SHEETS.MOVES),[uniqueId_('MOVE'),now,r[0],r[1],'Sprzedaż',r[23],'Klient',input.eventId||r[24]||'','Nie dotyczy',clean_(input.comment),user,now,saleId]);
+    if (channel === 'Targi') markFairDirty_(saleEventId);
     appendLog_(user, 'mobile/web', 'SPRZEDAJ_PRODUKT', 'produkt', r[0], r[25], channel === 'Targi' ? 'Sprzedany na targach' : 'Sprzedany w sklepie', input.comment || '');
-    refreshMonthlyFinance_(monthKey_(now));
-    return { ok:true, saleId, discountValue, message:`Sprzedano ${r[2]} za ${finalPrice.toFixed(2)} zł.` };
+    markFinanceDirty_(monthKey_(now));
+    return { ok:true, saleId, discountValue, elapsedMs:Date.now()-startedAt, message:`Sprzedano ${r[2]} za ${finalPrice.toFixed(2)} zł.` };
   } finally { lock.releaseLock(); }
 }
 
@@ -432,13 +432,13 @@ function addExpense(input) {
   const period = input.month || monthKey_(input.date ? parseDate_(input.date) : now);
   if (isMonthClosed_(period)) throw new Error('Ten miesiąc finansowy jest już zamknięty.');
   const settlementStatus = reimbursement > 0 ? 'Nierozliczone' : 'Nie wymaga rozliczenia';
-  sheet_(VP.SHEETS.EXPENSES).appendRow([id,input.date?parseDate_(input.date):now,period,clean_(input.description),input.category,costType,input.accountingClass||'Do potwierdzenia',
+  appendFast_(sheet_(VP.SHEETS.EXPENSES),[id,input.date?parseDate_(input.date):now,period,clean_(input.description),input.category,costType,input.accountingClass||'Do potwierdzenia',
     optionalMoney_(input.netAmount),optionalMoney_(input.vatAmount),gross,input.paidBy,input.payment||'',shareTP,shareVV,costTP,costVV,reimbursement,settlementStatus,0,'','',input.documentType||'',clean_(input.invoiceTo),input.taxCost||'Do potwierdzenia',input.eventId||'','','',clean_(input.comment),user,now]);
   const rowNo = sheet_(VP.SHEETS.EXPENSES).getLastRow();
   sheet_(VP.SHEETS.EXPENSES).getRange(rowNo,18).setValue(settlementStatus);
   if (attachment) sheet_(VP.SHEETS.EXPENSES).getRange(rowNo,26,1,2).setValues([[attachment.url,attachment.id]]);
   appendLog_(user,'mobile/web','DODAJ_WYDATEK','wydatek',id,'',JSON.stringify({gross,paidBy:input.paidBy}),input.comment||'');
-  refreshMonthlyFinance_(period);
+  markFinanceDirty_(period);
   return {ok:true,id,reimbursement,message:`Dodano wydatek ${gross.toFixed(2)} zł${reimbursement?` · do rozliczenia ${reimbursement.toFixed(2)} zł`:''}.`};
 }
 
@@ -499,7 +499,7 @@ function refreshMonthlyFinance_(period) {
     const row=[period,store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,units,shop,fairs,cash,card,other,complete,unknown.length?`${unknown.length} zapisów bez potwierdzonego kosztu`:'',now,status];
     const index=existing.findIndex(r=>r[0]&&normalizePeriod_(r[0])===period&&r[1]===store); if(index>=0)sh.getRange(index+2,1,1,20).setValues([row]);else sh.appendRow(row);
     output.push({store,revenue,discounts,cogs,unknownRevenue,margin,individual,shared,result,count:units,shop,fairs,cash,card,other,completeness:complete,status:row[19]});
-  }); return output;
+  }); PropertiesService.getDocumentProperties().deleteProperty(`VP_FIN_DIRTY_${period.replace('-','_')}`);return output;
 }
 
 function previewLegacySales() {
@@ -583,17 +583,21 @@ function inferAccountingClass_(v){const n=normalize_(v);if(n.includes('kaucj'))r
 function assertAuthorized_() {
   const active=clean_(Session.getActiveUser().getEmail()),effective=clean_(Session.getEffectiveUser().getEmail()),email=(active||effective).toLowerCase();
   if (!email) throw new Error('Nie udało się rozpoznać konta Google. Wdrożenie musi działać jako „Użytkownik uzyskujący dostęp do aplikacji”.');
+  const authCache=CacheService.getUserCache(),authKey=`VP_AUTH_${email}`;
+  if(authCache.get(authKey)==='1')return email;
   const sh = sheet_(VP.SHEETS.USERS);
   const last = sh.getLastRow();
   const users = last < 2 ? [] : sh.getRange(2,1,last-1,5).getValues();
   const allowed = users.some(r => clean_(r[0]).toLowerCase() === email && r[3] === true && r[4] === true);
   if (!allowed) throw new Error(`Brak dostępu dla konta ${email}. Dodaj je w zakładce 13_UŻYTKOWNICY.`);
+  authCache.put(authKey,'1',300);
   return email;
 }
 
 function getDictionaries_() {
-  const sh = sheet_(VP.SHEETS.DICTS), values = sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),16).getDisplayValues();
-  return Array.from({length:16},(_,c)=>values.map(r=>r[c]).filter(Boolean));
+  const cache=CacheService.getDocumentCache(),key='VP_DICTIONARIES_220',cached=cache.get(key);if(cached)return JSON.parse(cached);
+  const sh = sheet_(VP.SHEETS.DICTS), values = sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),16).getDisplayValues(),result=Array.from({length:16},(_,c)=>values.map(r=>r[c]).filter(Boolean));
+  const json=JSON.stringify(result);if(json.length<90000)cache.put(key,json,900);return result;
 }
 function listFairs_() {
   return dataRows_(sheet_(VP.SHEETS.FAIRS),18).filter(r=>r[0]).map(r=>({
@@ -613,11 +617,12 @@ function refreshFairStats_(eventId) {
   fairs.getRange(index+2,10,1,6).setValues([[takenTP,takenVV,salesTP.reduce((s,r)=>s+saleUnits_(r),0),salesVV.reduce((s,r)=>s+saleUnits_(r),0),round2_(salesTP.reduce((s,r)=>s+numberOrZero_(r[14]),0)),round2_(salesVV.reduce((s,r)=>s+numberOrZero_(r[14]),0))]]);
 }
 function getSetting_(key) {
-  const sh = sheet_(VP.SHEETS.SETTINGS), values = sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),2).getDisplayValues();
-  const hit = values.find(r => r[0] === key); return hit ? hit[1] : '';
+  const cache=CacheService.getDocumentCache(),cacheKey='VP_SETTINGS_220',cached=cache.get(cacheKey);let values;
+  if(cached)values=JSON.parse(cached);else{const sh=sheet_(VP.SHEETS.SETTINGS);values=sh.getRange(2,1,Math.max(sh.getLastRow()-1,1),2).getDisplayValues();const json=JSON.stringify(values);if(json.length<90000)cache.put(cacheKey,json,600);}
+  const hit=values.find(r=>r[0]===key);return hit?hit[1]:'';
 }
-function setSetting_(key,value) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0)sh.getRange(i+2,2).setValue(value);else sh.appendRow([key,value,'']); }
-function ensureSetting_(key,value,description) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0){if(key==='WERSJA')sh.getRange(i+2,2).setValue(value);return;} sh.appendRow([key,value,description]); }
+function setSetting_(key,value) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0)sh.getRange(i+2,2).setValue(value);else appendFast_(sh,[key,value,'']);CacheService.getDocumentCache().remove('VP_SETTINGS_220'); }
+function ensureSetting_(key,value,description) { const sh=sheet_(VP.SHEETS.SETTINGS), rows=dataRows_(sh,3), i=rows.findIndex(r=>r[0]===key); if(i>=0){if(key==='WERSJA')sh.getRange(i+2,2).setValue(value);CacheService.getDocumentCache().remove('VP_SETTINGS_220');return;} appendFast_(sh,[key,value,description]);CacheService.getDocumentCache().remove('VP_SETTINGS_220'); }
 function saveImage_(dataUrl, productId, context) {
   const folderId = getSetting_('FOLDER_ZDJĘCIA_ID');
   if (!folderId) throw new Error('Najpierw wpisz ID wspólnego folderu zdjęć w 12_USTAWIENIA.');
@@ -646,8 +651,24 @@ function nextProductId_(store, sh) {
   const max = ids.reduce((m,id)=>{ const x=String(id).match(new RegExp(`^${prefix}-(\\d+)$`)); return x?Math.max(m,Number(x[1])):m; },0);
   return `${prefix}-${String(max+1).padStart(6,'0')}`;
 }
+function findProductRow_(sh,productId){
+  const id=clean_(productId);if(!id||sh.getLastRow()<2)return 0;
+  const hit=sh.getRange(2,1,sh.getLastRow()-1,1).createTextFinder(id).matchEntireCell(true).findNext();
+  return hit?hit.getRow():0;
+}
+function appendFast_(sh,row){
+  const targetRow=sh.getLastRow()+1;
+  if(targetRow>sh.getMaxRows())sh.insertRowAfter(sh.getMaxRows());
+  sh.getRange(targetRow,1,1,row.length).setValues([row]);
+}
+function markFinanceDirty_(period){if(period)PropertiesService.getDocumentProperties().setProperty(`VP_FIN_DIRTY_${String(period).replace('-','_')}`,String(Date.now()));}
+function markFairDirty_(eventId){if(eventId)PropertiesService.getDocumentProperties().setProperty(`VP_FAIR_DIRTY_${eventId}`,String(Date.now()));}
+function refreshDirtyFairs_(){
+  const props=PropertiesService.getDocumentProperties(),all=props.getProperties(),keys=Object.keys(all).filter(k=>k.startsWith('VP_FAIR_DIRTY_')).slice(0,10);
+  keys.forEach(k=>{const id=k.slice('VP_FAIR_DIRTY_'.length);refreshFairStats_(id);props.deleteProperty(k);});
+}
 function appendLog_(user, channel, operation, object, id, before, after, comment) {
-  sheet_(VP.SHEETS.LOG).appendRow([uniqueId_('LOG'),new Date(),user,channel,operation,object,id,before,after,comment,'OK','',VP.VERSION,'']);
+  appendFast_(sheet_(VP.SHEETS.LOG),[uniqueId_('LOG'),new Date(),user,channel,operation,object,id,before,after,comment,'OK','',VP.VERSION,'']);
 }
 function bindDatabase_(){const active=SpreadsheetApp.getActiveSpreadsheet();if(!active)return'';PropertiesService.getScriptProperties().setProperty('DATABASE_SPREADSHEET_ID',active.getId());VP_BOOK_=active;return active.getId();}
 function book_(){if(VP_BOOK_)return VP_BOOK_;const active=SpreadsheetApp.getActiveSpreadsheet(),saved=PropertiesService.getScriptProperties().getProperty('DATABASE_SPREADSHEET_ID');if(active&&(!saved||active.getId()===saved)){VP_BOOK_=active;return VP_BOOK_;}const id=saved||(active&&active.getId())||VP.SPREADSHEET_ID;if(!id)throw new Error('Nie skonfigurowano arkusza bazy danych. Otwórz arkusz i uruchom instalator z menu VINTAGE PRO.');VP_BOOK_=SpreadsheetApp.openById(id);return VP_BOOK_;}

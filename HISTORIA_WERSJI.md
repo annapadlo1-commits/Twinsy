@@ -65,3 +65,13 @@ Produkty, sprzedaż, zdjęcia, raporty dobowe, targi, wydatki i rozliczenia.
 - podgląd zdjęcia produktu pobierany przez autoryzowany backend Apps Script,
 - poprawne wyświetlanie prywatnych zdjęć z Dysku także na iPhone,
 - czytelny komunikat, jeśli zdjęcie rzeczywiście nie istnieje lub konto nie ma dostępu.
+# 2.2.0
+
+- usunięcie pełnego przeliczania finansów z krytycznej ścieżki sprzedaży,
+- odroczone odświeżanie statystyk targowych,
+- szybkie wyszukiwanie wiersza produktu po unikatowym ID,
+- cache autoryzacji, ustawień i słowników,
+- szybsze zapisy sprzedaży, ruchów, logów, produktów i wydatków,
+- zabezpieczenie przycisku sprzedaży przed podwójnym kliknięciem,
+- pomiar czasu zapisu widoczny po zakończeniu transakcji,
+- zachowany naprawiony podgląd zdjęć z wersji 2.1.2.

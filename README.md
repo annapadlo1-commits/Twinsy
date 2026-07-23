@@ -1,4 +1,4 @@
-# Vintage PRO 2.1.2 — niezawodny podgląd zdjęć
+# Vintage PRO 2.2.0 — duża paczka wydajnościowa
 
 Bezpłatna aplikacja Google Sheets + Apps Script dla TWINS PICK i VILANA VINTAGE. Obsługuje komputer i telefon, magazyn produktów jednostkowych, sprzedaż, targi, raporty dobowe, wydatki, rozliczenia 50/50, analitykę, korekty, zdjęcia i migrację danych historycznych.
 
@@ -6,7 +6,16 @@ Bezpłatna aplikacja Google Sheets + Apps Script dla TWINS PICK i VILANA VINTAGE
 
 1. Otwórz docelowy arkusz i wybierz **Rozszerzenia → Apps Script**.
 2. Zastąp `Code.gs`, `Mobile.html` i `appsscript.json` plikami z paczki (plik HTML musi nazywać się `Mobile`).
-3. Zapisz projekt, odśwież arkusz i wybierz **VINTAGE PRO → Przygotuj paczkę 2.1.2 — podgląd zdjęć**. Ta czynność wiąże wdrożenie z aktualnie otwartym arkuszem.
+3. Zapisz projekt, odśwież arkusz i wybierz **VINTAGE PRO → Przygotuj dużą paczkę 2.2.0 — wydajność**. Ta czynność wiąże wdrożenie z aktualnie otwartym arkuszem.
+
+## Wydajność 2.2.0
+
+- sprzedaż nie przelicza już synchronicznie całego miesiąca finansowego,
+- statystyki targów są oznaczane do odświeżenia i aktualizowane przy otwarciu modułu targów,
+- produkt jest lokalizowany po ID bez pobierania wszystkich 42 kolumn całego magazynu,
+- autoryzacja użytkownika, słowniki i ustawienia korzystają z krótkiego bezpiecznego cache,
+- przycisk sprzedaży blokuje ponowne kliknięcie i pokazuje rzeczywisty czas zapisu,
+- finanse nadal przeliczają się z danych źródłowych po wejściu do modułu Finanse lub podczas zamykania miesiąca.
 
 Zdjęcia zapisane przy dodawaniu lub sprzedaży produktu są widoczne jako miniatury w Magazynie, wynikach wyszukiwania sprzedaży i targów oraz w szczegółach produktu. Jeśli zdjęcie jest niedostępne, aplikacja pokazuje czytelny komunikat zamiast uszkodzonego obrazka.
 4. W `13_UŻYTKOWNICY` dodaj konta Google; pola `Aktywny` i `Telefon – dostęp` muszą być zaznaczone.
